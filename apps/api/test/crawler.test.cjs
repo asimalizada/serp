@@ -32,6 +32,8 @@ test('discovers nested and gzip sitemaps in listed order, deduplicating URLs', a
   assert.deepEqual(selectBlogUrls(discovery.urls, 'https://example.com'), [
     'https://example.com/blog/first-article', 'https://example.com/blog/second-article',
   ]);
+  assert.deepEqual(selectBlogUrls(['https://example.com/company/stories/case-study',
+    'https://example.com/blog/first-article'], 'https://example.com'), ['https://example.com/blog/first-article']);
 });
 
 test('skips malformed sitemaps and selects only the first 15 article URLs', async () => {
@@ -121,4 +123,22 @@ test('records page failures and appends new crawl history on repeated runs', asy
   assert.deepEqual(history.map((item) => item.runId), ['run-1', 'run-1', 'run-2', 'run-2']);
   assert.deepEqual(runs.map((run) => run.status), [2, 2]);
   assert.equal(history[0].hash, history[2].hash);
+});
+
+test('recovery skips successful URLs and retains original sitemap order', async () => {
+  const saved = [];
+  const store = {
+    getClient: async () => ({ id: 'client', websiteUrl: 'https://example.com' }),
+    createRun: async () => 'recovery-run',
+    startRun: async () => {}, finishRun: async () => {}, ensureIssueTypes: async () => {},
+    savePage: async (_client, _run, url, order) => saved.push({ url, order }),
+    saveFailedPage: async () => assert.fail('unexpected failure'),
+  };
+  const urls = ['https://example.com/blog/first', 'https://example.com/blog/second'];
+  const crawler = new CrawlService(store, {
+    get: async (url) => ({ ...result(url, fixture('article.html')), contentType: 'text/html' }),
+  }, { discover: async () => ({ urls, sitemapUrl: null, errors: [] }) });
+  const summary = await crawler.crawlClient('client', new Set([urls[0]]));
+  assert.equal(summary.selected, 1);
+  assert.deepEqual(saved, [{ url: urls[1], order: 2 }]);
 });

@@ -70,9 +70,8 @@ export class PrismaCrawlStore implements CrawlStore {
         },
       });
       for (const item of analysis.keywords) {
-        const keyword = await tx.keyword.upsert({
-          where: { phrase: item.phrase }, create: { phrase: item.phrase }, update: {},
-        });
+        await tx.keyword.createMany({ data: [{ phrase: item.phrase }], skipDuplicates: true });
+        const keyword = await tx.keyword.findUniqueOrThrow({ where: { phrase: item.phrase } });
         await tx.pageKeyword.upsert({
           where: { pageId_keywordId: { pageId: page.id, keywordId: keyword.id } },
           create: { pageId: page.id, keywordId: keyword.id }, update: {},

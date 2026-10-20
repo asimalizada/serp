@@ -13,6 +13,7 @@
     "start:api": "pnpm --filter @serp/api start",
     "start:web": "pnpm --filter @serp/web start",
     "crawl": "pnpm --filter @serp/api crawl",
+    "seed": "pnpm --filter @serp/api seed",
     "db:validate": "pnpm --filter @serp/api prisma:validate",
     "db:generate": "pnpm --filter @serp/api prisma:generate",
     "db:migrate:dev": "pnpm --filter @serp/api prisma:migrate:dev",

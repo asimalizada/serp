@@ -27,6 +27,7 @@ export function isLikelyBlogArticle(input: string, websiteUrl: string): boolean 
   const segments = url.pathname.toLowerCase().split('/').filter(Boolean);
   if (!segments.length) return false;
   if (segments.some((part) => /^(category|categories|tag|tags|author|authors|page|feed|search|archives?)$/.test(part))) return false;
+  if (segments.some((part) => /^(company|customers|case-studies|success-stories)$/.test(part))) return false;
   const slug = segments.at(-1)!;
   if (!/[a-z]/.test(slug) || /^(blog|news|articles?|insights?|resources?|index|sitemap)(\.html?)?$/.test(slug)) return false;
   const section = segments.slice(0, -1).some((part) => /(blog|news|articles?|insights?|stories|guides)/.test(part));

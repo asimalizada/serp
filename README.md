@@ -25,15 +25,24 @@ The API root route returns a starter response; database access is not wired into
 | `pnpm db:migrate:dev` | Create and apply migrations in development |
 | `pnpm db:migrate:deploy` | Apply committed migrations in deployment |
 | `pnpm crawl --client <uuid>` | Build the API and crawl an existing client |
+| `pnpm seed` | Provision two demo clients, recover incomplete crawls, and generate daily synthetic ranks |
 | `pnpm --filter @serp/api test` | Build and run crawler tests |
 
 `apps/api` loads the root `.env` for Prisma commands. The API does not connect to PostgreSQL on startup yet. If port 5432 is occupied, set `POSTGRES_PORT` in `.env` and use the same port in `DATABASE_URL`.
+
+## Demo seed
+
+Set `SEED_USER_A_PASSWORD` and `SEED_USER_B_PASSWORD` in your ignored `.env` to distinct development-only passwords of 12–72 UTF-8 bytes, then run `pnpm seed`. The future demo login emails are `semrush.demo@serp.local` and `yoast.demo@serp.local`; use the passwords you supplied. The seed stores bcrypt hashes and does not change an existing demo user's password. There are no authentication endpoints yet.
+
+The seed creates or reuses one client per demo user (`https://www.semrush.com` and `https://yoast.com`) and crawls the first 15 qualifying blog posts in sitemap order. A complete prior crawl is skipped. If a crawl is partial, only URLs without a prior successful PageCrawl are retried in a new CrawlRun; old results remain untouched. Failed fetches are recorded, and a failed crawl may be retried by running the seed again.
+
+Rank generation is a separate operation within the seed. It covers every existing PageKeyword, including relationships added through later crawls, and creates at least 50,000 synthetic daily observations overall. The date range expands when there are fewer relationships, with a minimum of 365 days. Positions are deterministic and change gradually. Existing snapshots are left intact, and only missing dates are inserted in batches. `pnpm crawl` never generates rank snapshots.
 
 ## Database schema
 
 The initial Prisma migration creates the 11 application tables. `PageCrawls.clientId` and `PageCrawlKeywords.pageId` let PostgreSQL enforce that a crawl uses a page from its client and that historical relevance refers to a persistent page-keyword identity. All foreign keys restrict deletion and key updates, preserving history across recrawls.
 
-Crawl and page-crawl statuses use `0 = pending`, `1 = running/processing`, `2 = completed`, and `3 = failed`. Issue severity uses `1 = Info`, `2 = Warning`, and `3 = Critical`. The migrations enforce these values, relevance and ranking bounds, and the UTC date of each rank snapshot. `snapshotAt` must be supplied explicitly. Completed or failed crawl runs and page crawls and their historical details, plus rank snapshots, cannot be edited or deleted. Write page-crawl keywords and issues before marking a page crawl completed or failed. Normalize incoming emails with `normalizeEmail` before user creation or lookup; PostgreSQL also normalizes stored emails and enforces case-insensitive uniqueness. No application seed data is included.
+Crawl and page-crawl statuses use `0 = pending`, `1 = running/processing`, `2 = completed`, and `3 = failed`. Issue severity uses `1 = Info`, `2 = Warning`, and `3 = Critical`. The migrations enforce these values, relevance and ranking bounds, and the UTC date of each rank snapshot. `snapshotAt` must be supplied explicitly. Completed or failed crawl runs and page crawls and their historical details, plus rank snapshots, cannot be edited or deleted. Write page-crawl keywords and issues before marking a page crawl completed or failed. Normalize incoming emails with `normalizeEmail` before user creation or lookup; PostgreSQL also normalizes stored emails and enforces case-insensitive uniqueness.
 
 ## Website crawler
 

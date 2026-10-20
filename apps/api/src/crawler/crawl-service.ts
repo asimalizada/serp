@@ -27,7 +27,7 @@ export class CrawlService {
     private readonly sitemaps: SitemapService,
   ) {}
 
-  async crawlClient(clientId: string): Promise<CrawlSummary> {
+  async crawlClient(clientId: string, skipSuccessfulUrls: ReadonlySet<string> = new Set()): Promise<CrawlSummary> {
     const client = await this.store.getClient(clientId);
     if (!client) throw new Error(`Client ${clientId} does not exist`);
     const runId = await this.store.createRun(clientId);
@@ -39,7 +39,9 @@ export class CrawlService {
       summary.discovered = discovery.urls.length;
       summary.sitemapUrl = discovery.sitemapUrl;
       summary.errors.push(...discovery.errors);
-      const selected = selectBlogUrls(discovery.urls, client.websiteUrl);
+      const selected = selectBlogUrls(discovery.urls, client.websiteUrl)
+        .map((url, index) => ({ url, order: index + 1 }))
+        .filter(({ url }) => !skipSuccessfulUrls.has(url));
       summary.selected = selected.length;
       if (!selected.length) throw new Error('No qualifying blog posts found in accessible sitemaps');
 
@@ -47,7 +49,7 @@ export class CrawlService {
       await Promise.all(Array.from({ length: Math.min(3, selected.length) }, async () => {
         while (cursor < selected.length) {
           const index = cursor++;
-          const url = selected[index];
+          const { url, order } = selected[index];
           let httpStatusCode: number | undefined;
           try {
             const response = await this.http.get(url, 2_000_000);
@@ -58,7 +60,7 @@ export class CrawlService {
               throw new Error(`Unexpected page content type: ${response.contentType}`);
             }
             const content = extractPageContent(response.body.toString('utf8'));
-            await this.store.savePage(clientId, runId, url, index + 1, {
+            await this.store.savePage(clientId, runId, url, order, {
               content, keywords: extractKeywords(content), issues: detectSeoIssues(content), httpStatusCode: response.status,
             });
             summary.processed++;
@@ -67,7 +69,7 @@ export class CrawlService {
             summary.failed++;
             summary.errors.push(message);
             try {
-              await this.store.saveFailedPage(clientId, runId, url, index + 1, errorText(error), httpStatusCode);
+              await this.store.saveFailedPage(clientId, runId, url, order, errorText(error), httpStatusCode);
             } catch (persistenceError) {
               summary.errors.push(`${url}: failed to save page failure: ${errorText(persistenceError)}`);
             }

@@ -32,10 +32,12 @@ test('persists new page-crawl snapshots while reusing page and keyword identitie
         return record;
       },
     },
-    keyword: { upsert: async ({ where }) => {
-      if (!keywords.has(where.phrase)) keywords.set(where.phrase, { id: `keyword-${keywords.size + 1}` });
-      return keywords.get(where.phrase);
-    } },
+    keyword: {
+      createMany: async ({ data }) => {
+        for (const { phrase } of data) if (!keywords.has(phrase)) keywords.set(phrase, { id: `keyword-${keywords.size + 1}` });
+      },
+      findUniqueOrThrow: async ({ where }) => keywords.get(where.phrase),
+    },
     pageKeyword: { upsert: async ({ where }) => {
       const key = `${where.pageId_keywordId.pageId}|${where.pageId_keywordId.keywordId}`;
       if (!pageKeywords.has(key)) pageKeywords.set(key, { id: `identity-${pageKeywords.size + 1}` });
