@@ -6,3 +6,155 @@ generator client {
 datasource db {
   provider = "postgresql"
 }
+
+model User {
+  id           String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  email        String   @unique @db.VarChar(320)
+  passwordHash String   @db.VarChar(255)
+  timezone     String   @default("America/Toronto") @db.VarChar(64)
+  createdAt    DateTime @default(now()) @db.Timestamptz(6)
+  clients      Client[]
+
+  @@map("Users")
+}
+
+model Client {
+  id               String     @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId           String     @db.Uuid
+  name             String     @db.VarChar(255)
+  websiteUrl       String     @db.Text
+  normalizedDomain String     @db.VarChar(253)
+  createdAt        DateTime   @default(now()) @db.Timestamptz(6)
+  user             User       @relation(fields: [userId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  pages            Page[]
+  crawlRuns        CrawlRun[]
+
+  @@unique([userId, normalizedDomain])
+  @@map("Clients")
+}
+
+model CrawlRun {
+  id          String      @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  clientId    String      @db.Uuid
+  status      Int         @db.SmallInt
+  sitemapUrl  String?     @db.Text
+  error       String?     @db.Text
+  createdAt   DateTime    @default(now()) @db.Timestamptz(6)
+  startedAt   DateTime?   @db.Timestamptz(6)
+  finishedAt  DateTime?   @db.Timestamptz(6)
+  client      Client      @relation(fields: [clientId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  pageCrawls  PageCrawl[]
+
+  @@unique([id, clientId])
+  @@map("CrawlRuns")
+}
+
+model Page {
+  id           String        @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  clientId     String        @db.Uuid
+  url          String        @db.Text
+  createdAt    DateTime      @default(now()) @db.Timestamptz(6)
+  client       Client        @relation(fields: [clientId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  pageCrawls   PageCrawl[]
+  pageKeywords PageKeyword[]
+
+  @@unique([clientId, url])
+  @@unique([id, clientId])
+  @@map("Pages")
+}
+
+model PageCrawl {
+  id                String             @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  crawlRunId        String             @db.Uuid
+  pageId            String             @db.Uuid
+  clientId          String             @db.Uuid
+  sitemapOrder      Int?               @db.SmallInt
+  status            Int                @db.SmallInt
+  httpStatusCode    Int?
+  title             String?            @db.Text
+  metaDescription   String?            @db.Text
+  h1                String?            @db.Text
+  wordCount         Int?
+  contentHash       String?            @db.VarChar(64)
+  error             String?            @db.Text
+  processedAt       DateTime?          @db.Timestamptz(6)
+  crawlRun          CrawlRun           @relation(fields: [crawlRunId, clientId], references: [id, clientId], onDelete: Restrict, onUpdate: Restrict)
+  page              Page               @relation(fields: [pageId, clientId], references: [id, clientId], onDelete: Restrict, onUpdate: Restrict)
+  pageCrawlKeywords PageCrawlKeyword[]
+  seoIssues         SeoIssue[]
+
+  @@unique([crawlRunId, pageId])
+  @@unique([id, pageId])
+  @@map("PageCrawls")
+}
+
+model Keyword {
+  id                String             @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  phrase            String             @unique @db.VarChar(512)
+  pageKeywords      PageKeyword[]
+  pageCrawlKeywords PageCrawlKeyword[]
+
+  @@map("Keywords")
+}
+
+model PageKeyword {
+  id                String             @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  pageId            String             @db.Uuid
+  keywordId         String             @db.Uuid
+  page              Page               @relation(fields: [pageId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  keyword           Keyword            @relation(fields: [keywordId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  pageCrawlKeywords PageCrawlKeyword[]
+  rankSnapshots     RankSnapshot[]
+
+  @@unique([pageId, keywordId])
+  @@map("PageKeywords")
+}
+
+model PageCrawlKeyword {
+  id             String      @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  pageCrawlId    String      @db.Uuid
+  pageId         String      @db.Uuid
+  keywordId      String      @db.Uuid
+  relevanceScore Decimal     @db.Decimal(5, 4)
+  pageCrawl      PageCrawl   @relation(fields: [pageCrawlId, pageId], references: [id, pageId], onDelete: Restrict, onUpdate: Restrict)
+  keyword        Keyword     @relation(fields: [keywordId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  pageKeyword    PageKeyword @relation(fields: [pageId, keywordId], references: [pageId, keywordId], onDelete: Restrict, onUpdate: Restrict)
+
+  @@unique([pageCrawlId, keywordId])
+  @@map("PageCrawlKeywords")
+}
+
+model SeoIssueType {
+  id          Int        @id @db.SmallInt
+  code        String     @unique @db.VarChar(100)
+  name        String     @db.VarChar(255)
+  description String     @db.Text
+  seoIssues   SeoIssue[]
+
+  @@map("SeoIssueTypes")
+}
+
+model SeoIssue {
+  id          String       @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  pageCrawlId String       @db.Uuid
+  issueTypeId Int          @db.SmallInt
+  severity    Int          @db.SmallInt
+  details     String       @db.Text
+  pageCrawl   PageCrawl    @relation(fields: [pageCrawlId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  issueType   SeoIssueType @relation(fields: [issueTypeId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+
+  @@unique([pageCrawlId, issueTypeId])
+  @@map("SeoIssues")
+}
+
+model RankSnapshot {
+  id            BigInt      @id @default(autoincrement())
+  pageKeywordId String      @db.Uuid
+  snapshotDate  DateTime    @db.Date
+  snapshotAt    DateTime    @db.Timestamptz(6)
+  position      Int         @db.SmallInt
+  pageKeyword   PageKeyword @relation(fields: [pageKeywordId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+
+  @@unique([pageKeywordId, snapshotDate])
+  @@map("RankSnapshots")
+}
