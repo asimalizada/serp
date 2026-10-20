@@ -12,6 +12,7 @@
     "build": "pnpm --filter @serp/shared build && pnpm --filter @serp/api build && pnpm --filter @serp/web build",
     "start:api": "pnpm --filter @serp/api start",
     "start:web": "pnpm --filter @serp/web start",
+    "crawl": "pnpm --filter @serp/api crawl",
     "db:validate": "pnpm --filter @serp/api prisma:validate",
     "db:generate": "pnpm --filter @serp/api prisma:generate",
     "db:migrate:dev": "pnpm --filter @serp/api prisma:migrate:dev",
