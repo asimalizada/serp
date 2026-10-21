@@ -1,7 +1,8 @@
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
 const { compare } = require('bcryptjs');
-const { DEMO_SITES, normalizeDomain, provisionDemoClients, crawlDemoClients } = require('../dist/seed/demo.js');
+const { DEMO_SITES, provisionDemoClients, crawlDemoClients } = require('../dist/seed/demo.js');
+const { normalizeDomain } = require('../dist/crawler/http/url-safety.js');
 const { deterministicPosition, snapshotDates, generateRankSnapshots } = require('../dist/seed/ranks.js');
 
 const passwords = { SEED_USER_A_PASSWORD: 'test-password-A-123', SEED_USER_B_PASSWORD: 'test-password-B-123' };
@@ -38,7 +39,7 @@ test('seed crawl skips complete clients and retries only missing URLs after part
   const calls = [];
   const prisma = {
     client: { findUniqueOrThrow: async ({ where }) => ({ websiteUrl: where.id === 'client-a' ? 'https://example.com' : 'https://example.org' }) },
-    pageCrawl: { findMany: async ({ where }) => completed.get(where.clientId).map((url) => ({ page: { url } })) },
+    page: { findMany: async ({ where }) => completed.get(where.clientId).map((url) => ({ url })) },
   };
   const crawler = { crawlClient: async (clientId, skip) => {
     calls.push({ clientId, skip: [...skip] });

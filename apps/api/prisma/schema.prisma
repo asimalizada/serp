@@ -8,14 +8,33 @@ datasource db {
 }
 
 model User {
-  id           String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  email        String   @unique @db.VarChar(320)
-  passwordHash String   @db.VarChar(255)
-  timezone     String   @default("America/Toronto") @db.VarChar(64)
-  createdAt    DateTime @default(now()) @db.Timestamptz(6)
-  clients      Client[]
+  id            String         @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  email         String         @unique @db.VarChar(320)
+  passwordHash  String         @db.VarChar(255)
+  timezone      String         @default("America/Toronto") @db.VarChar(64)
+  createdAt     DateTime       @default(now()) @db.Timestamptz(6)
+  clients       Client[]
+  refreshTokens RefreshToken[]
 
   @@map("Users")
+}
+
+model RefreshToken {
+  tokenHash String   @id @db.VarChar(64)
+  userId    String   @db.Uuid
+  expiresAt DateTime @db.Timestamptz(6)
+  createdAt DateTime @default(now()) @db.Timestamptz(6)
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("RefreshTokens")
+}
+
+model AuthThrottle {
+  key       String   @id @db.VarChar(64)
+  hits      Int
+  expiresAt DateTime @db.Timestamptz(6)
+
+  @@map("AuthThrottles")
 }
 
 model Client {

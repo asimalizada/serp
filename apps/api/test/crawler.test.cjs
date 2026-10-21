@@ -3,12 +3,12 @@ const assert = require('node:assert/strict');
 const { readFileSync } = require('node:fs');
 const { join } = require('node:path');
 const { gzipSync } = require('node:zlib');
-const { SitemapService } = require('../dist/crawler/sitemap.js');
+const { SitemapService } = require('../dist/crawler/sitemaps/sitemap.service.js');
 const { selectBlogUrls } = require('../dist/crawler/blog-url.js');
-const { extractPageContent } = require('../dist/crawler/content.js');
-const { extractKeywords } = require('../dist/crawler/keywords.js');
-const { detectSeoIssues } = require('../dist/crawler/seo-issues.js');
-const { SafeHttpClient } = require('../dist/crawler/safe-http.js');
+const { extractPageContent } = require('../dist/crawler/analysis/content.js');
+const { extractKeywords } = require('../dist/crawler/analysis/keywords.js');
+const { detectSeoIssues } = require('../dist/crawler/analysis/seo-issues.js');
+const { SafeHttpClient } = require('../dist/crawler/http/safe-http.client.js');
 const { CrawlService } = require('../dist/crawler/crawl-service.js');
 
 const fixture = (name) => readFileSync(join(__dirname, 'fixtures', name));
@@ -141,4 +141,63 @@ test('recovery skips successful URLs and retains original sitemap order', async 
   const summary = await crawler.crawlClient('client', new Set([urls[0]]));
   assert.equal(summary.selected, 1);
   assert.deepEqual(saved, [{ url: urls[1], order: 2 }]);
+});
+
+test('a page whose failure cannot be persisted does not complete the crawl run', async () => {
+  let finalStatus;
+  const store = {
+    getClient: async () => ({ id: 'client', websiteUrl: 'https://example.com' }),
+    createRun: async () => 'run', startRun: async () => {},
+    finishRun: async (_id, status) => { finalStatus = status; },
+    ensureIssueTypes: async () => {},
+    savePage: async (_client, _run, url) => {
+      if (url.endsWith('second')) throw new Error('database write failed');
+    },
+    saveFailedPage: async () => { throw new Error('failure write failed'); },
+  };
+  const urls = ['https://example.com/blog/first', 'https://example.com/blog/second'];
+  const crawler = new CrawlService(store, { get: async (url) => ({ ...result(url, fixture('article.html')),
+    contentType: 'text/html' }) }, { discover: async () => ({ urls, sitemapUrl: null, errors: [] }) });
+  const summary = await crawler.crawlClient('client');
+  assert.equal(summary.processed, 1);
+  assert.equal(summary.failed, 1);
+  assert.equal(finalStatus, 3);
+  assert.ok(summary.errors.some((error) => error.includes('failure write failed')));
+});
+
+test('aborted crawl run via AbortSignal stops execution and finalizes run with failure status 3', async () => {
+  let finalStatus;
+  let finishedError;
+  const store = {
+    getClient: async () => ({ id: 'client', websiteUrl: 'https://example.com' }),
+    createRun: async () => 'run-aborted',
+    startRun: async () => {},
+    finishRun: async (_id, status, _sitemap, error) => {
+      finalStatus = status;
+      finishedError = error;
+    },
+    ensureIssueTypes: async () => {},
+    savePage: async () => {},
+    saveFailedPage: async () => {},
+  };
+  const urls = ['https://example.com/blog/first', 'https://example.com/blog/second'];
+  const sitemaps = {
+    discover: async (url, signal) => {
+      if (signal?.aborted) throw new Error('Crawl aborted: application is shutting down');
+      return { urls, sitemapUrl: 'https://example.com/sitemap.xml', errors: [] };
+    },
+  };
+  const http = {
+    get: async () => {
+      throw new Error('should not be called when aborted');
+    },
+  };
+  const crawler = new CrawlService(store, http, sitemaps);
+  const ac = new AbortController();
+  ac.abort();
+
+  const summary = await crawler.crawlClient('client', new Set(), 'run-aborted', ac.signal);
+  assert.equal(finalStatus, 3);
+  assert.match(finishedError, /Crawl aborted: application is shutting down/);
+  assert.equal(summary.processed, 0);
 });

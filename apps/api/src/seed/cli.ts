@@ -1,18 +1,19 @@
-import path from 'node:path';
 import { config as loadEnv } from 'dotenv';
 import { NestFactory } from '@nestjs/core';
-import { PrismaClient } from '../generated/prisma/client';
+import { findEnvPath } from '../app-config';
+import { PrismaService } from '../database/prisma.service';
 import { CrawlService } from '../crawler/crawl-service';
 import { CrawlerModule } from '../crawler/crawler.module';
 import { crawlDemoClients, provisionDemoClients, validateDemoPasswords } from './demo';
 import { generateRankSnapshots } from './ranks';
 
 async function main(): Promise<void> {
-  loadEnv({ path: path.resolve(process.cwd(), '../../.env'), quiet: true });
+  const envPath = findEnvPath();
+  if (envPath) loadEnv({ path: envPath, quiet: true });
   validateDemoPasswords(process.env);
   const app = await NestFactory.createApplicationContext(CrawlerModule, { logger: ['error', 'warn'] });
   try {
-    const prisma = app.get(PrismaClient);
+    const prisma = app.get(PrismaService);
     const clientIds = await provisionDemoClients(prisma, process.env);
     const crawls = await crawlDemoClients(prisma, app.get(CrawlService), clientIds);
     for (const result of crawls) process.stdout.write(`${JSON.stringify(result)}\n`);
@@ -20,7 +21,6 @@ async function main(): Promise<void> {
     process.stdout.write(`${JSON.stringify({ rankSnapshots: ranks })}\n`);
     if (crawls.some(({ summary }) => summary && (summary.failed > 0 || summary.processed === 0))) process.exitCode = 1;
   } finally {
-    await app.get(PrismaClient).$disconnect();
     await app.close();
   }
 }

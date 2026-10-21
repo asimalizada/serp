@@ -4,10 +4,45 @@
   "private": true,
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "require": "./dist/index.js",
+      "default": "./dist/index.js"
+    },
+    "./schemas/client.schema": {
+      "types": "./dist/schemas/client.schema.d.ts",
+      "import": "./dist/schemas/client.schema.js",
+      "require": "./dist/schemas/client.schema.js",
+      "default": "./dist/schemas/client.schema.js"
+    },
+    "./schemas/page.schema": {
+      "types": "./dist/schemas/page.schema.d.ts",
+      "import": "./dist/schemas/page.schema.js",
+      "require": "./dist/schemas/page.schema.js",
+      "default": "./dist/schemas/page.schema.js"
+    },
+    "./schemas/auth.schema": {
+      "types": "./dist/schemas/auth.schema.d.ts",
+      "import": "./dist/schemas/auth.schema.js",
+      "require": "./dist/schemas/auth.schema.js",
+      "default": "./dist/schemas/auth.schema.js"
+    },
+    "./*": {
+      "types": "./dist/*.d.ts",
+      "import": "./dist/*.js",
+      "require": "./dist/*.js",
+      "default": "./dist/*.js"
+    }
+  },
   "scripts": {
     "build": "tsc -p tsconfig.json"
   },
   "devDependencies": {
     "typescript": "^5.9.0"
+  },
+  "dependencies": {
+    "zod": "^4.6.7"
   }
 }

@@ -1,4 +1,4 @@
-import { normalizeHttpUrl } from './safe-http';
+import { normalizeHttpUrl } from './http/url-safety';
 
 function siteHost(host: string): string {
   return host.toLowerCase().replace(/^www\./, '');

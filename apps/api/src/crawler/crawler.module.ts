@@ -1,22 +1,22 @@
 import { Module } from '@nestjs/common';
-import { PrismaPg } from '@prisma/adapter-pg';
-import { PrismaClient } from '../generated/prisma/client';
+import { DatabaseModule } from '../database/database.module';
+import { PrismaService } from '../database/prisma.service';
 import { CrawlService } from './crawl-service';
-import { PrismaCrawlStore } from './persistence';
-import { SafeHttpClient } from './safe-http';
-import { SitemapService } from './sitemap';
+import { PrismaCrawlStore } from './persistence/prisma-crawl.store';
+import { SafeHttpClient } from './http/safe-http.client';
+import { SitemapService } from './sitemaps/sitemap.service';
+import { CrawlWorker } from './workers/crawl-worker';
 
 @Module({
+  imports: [DatabaseModule],
   providers: [
-    { provide: PrismaClient, useFactory: () => {
-      if (!process.env.DATABASE_URL) throw new Error('DATABASE_URL is required');
-      return new PrismaClient({ adapter: new PrismaPg({ connectionString: process.env.DATABASE_URL }) });
-    } },
-    { provide: SafeHttpClient, useFactory: () => new SafeHttpClient() },
+    SafeHttpClient,
     { provide: SitemapService, useFactory: (http: SafeHttpClient) => new SitemapService(http), inject: [SafeHttpClient] },
-    { provide: PrismaCrawlStore, useFactory: (prisma: PrismaClient) => new PrismaCrawlStore(prisma), inject: [PrismaClient] },
+    { provide: PrismaCrawlStore, useFactory: (prisma: PrismaService) => new PrismaCrawlStore(prisma), inject: [PrismaService] },
     { provide: CrawlService, useFactory: (store: PrismaCrawlStore, http: SafeHttpClient, sitemaps: SitemapService) =>
       new CrawlService(store, http, sitemaps), inject: [PrismaCrawlStore, SafeHttpClient, SitemapService] },
+    CrawlWorker,
   ],
+  exports: [CrawlService, SafeHttpClient, CrawlWorker],
 })
 export class CrawlerModule {}

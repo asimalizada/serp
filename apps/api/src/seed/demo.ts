@@ -2,17 +2,13 @@ import { hash } from 'bcryptjs';
 import { PrismaClient } from '../generated/prisma/client';
 import { CrawlService, CrawlSummary } from '../crawler/crawl-service';
 import { isLikelyBlogArticle } from '../crawler/blog-url';
-import { normalizeHttpUrl } from '../crawler/safe-http';
+import { normalizeDomain, normalizeHttpUrl } from '../crawler/http/url-safety';
 import { normalizeEmail } from '../normalize-email';
 
 export const DEMO_SITES = [
   { email: 'semrush.demo@serp.local', name: 'Semrush', websiteUrl: 'https://www.semrush.com', passwordEnv: 'SEED_USER_A_PASSWORD' },
   { email: 'yoast.demo@serp.local', name: 'Yoast', websiteUrl: 'https://yoast.com', passwordEnv: 'SEED_USER_B_PASSWORD' },
 ] as const;
-
-export function normalizeDomain(websiteUrl: string): string {
-  return new URL(normalizeHttpUrl(websiteUrl)).hostname.toLowerCase().replace(/^www\./, '');
-}
 
 export function validateDemoPasswords(values: Record<string, string | undefined>): void {
   for (const site of DEMO_SITES) {
@@ -50,12 +46,10 @@ export async function crawlDemoClients(prisma: PrismaClient, crawler: CrawlServi
   const results: SeedCrawlResult[] = [];
   for (const clientId of clientIds) {
     const client = await prisma.client.findUniqueOrThrow({ where: { id: clientId }, select: { websiteUrl: true } });
-    const successful = await prisma.pageCrawl.findMany({
-      where: { clientId, status: 2 },
-      select: { page: { select: { url: true } } },
-      distinct: ['pageId'],
+    const successful = await prisma.page.findMany({
+      where: { clientId, pageCrawls: { some: { status: 2 } } }, select: { url: true },
     });
-    const successfulUrls = new Set(successful.map(({ page }) => page.url)
+    const successfulUrls = new Set(successful.map(({ url }) => url)
       .filter((url) => isLikelyBlogArticle(url, client.websiteUrl)));
     if (successfulUrls.size >= 15) {
       results.push({ clientId, skipped: true, priorSuccessfulPages: successfulUrls.size });

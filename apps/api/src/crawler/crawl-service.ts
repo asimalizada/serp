@@ -1,10 +1,10 @@
 import { isSameSiteUrl, selectBlogUrls } from './blog-url';
-import { extractPageContent } from './content';
-import { extractKeywords } from './keywords';
-import { CrawlStore } from './persistence';
-import { HttpClient } from './safe-http';
-import { detectSeoIssues } from './seo-issues';
-import { SitemapService } from './sitemap';
+import { extractPageContent } from './analysis/content';
+import { extractKeywords } from './analysis/keywords';
+import { detectSeoIssues } from './analysis/seo-issues';
+import { HttpClient } from './http/safe-http.client';
+import { CrawlStore } from './persistence/prisma-crawl.store';
+import { SitemapService } from './sitemaps/sitemap.service';
 
 export interface CrawlSummary {
   runId: string;
@@ -27,15 +27,17 @@ export class CrawlService {
     private readonly sitemaps: SitemapService,
   ) {}
 
-  async crawlClient(clientId: string, skipSuccessfulUrls: ReadonlySet<string> = new Set()): Promise<CrawlSummary> {
+  async crawlClient(clientId: string, skipSuccessfulUrls: ReadonlySet<string> = new Set(), queuedRunId?: string, signal?: AbortSignal): Promise<CrawlSummary> {
     const client = await this.store.getClient(clientId);
     if (!client) throw new Error(`Client ${clientId} does not exist`);
-    const runId = await this.store.createRun(clientId);
+    const runId = queuedRunId ?? await this.store.createRun(clientId);
     const summary: CrawlSummary = { runId, discovered: 0, selected: 0, processed: 0, failed: 0, sitemapUrl: null, errors: [] };
     await this.store.startRun(runId);
     try {
+      if (signal?.aborted) throw new Error('Crawl aborted: application is shutting down');
+      let unpersistedPage = false;
       await this.store.ensureIssueTypes();
-      const discovery = await this.sitemaps.discover(client.websiteUrl);
+      const discovery = await this.sitemaps.discover(client.websiteUrl, signal);
       summary.discovered = discovery.urls.length;
       summary.sitemapUrl = discovery.sitemapUrl;
       summary.errors.push(...discovery.errors);
@@ -48,11 +50,12 @@ export class CrawlService {
       let cursor = 0;
       await Promise.all(Array.from({ length: Math.min(3, selected.length) }, async () => {
         while (cursor < selected.length) {
+          if (signal?.aborted) throw new Error('Crawl aborted: application is shutting down');
           const index = cursor++;
           const { url, order } = selected[index];
           let httpStatusCode: number | undefined;
           try {
-            const response = await this.http.get(url, 2_000_000);
+            const response = await this.http.get(url, 2_000_000, signal);
             httpStatusCode = response.status;
             if (!isSameSiteUrl(response.url, client.websiteUrl)) throw new Error('Page redirected outside the client website');
             if (response.status < 200 || response.status >= 300) throw new Error(`HTTP ${response.status}`);
@@ -71,12 +74,13 @@ export class CrawlService {
             try {
               await this.store.saveFailedPage(clientId, runId, url, order, errorText(error), httpStatusCode);
             } catch (persistenceError) {
+              unpersistedPage = true;
               summary.errors.push(`${url}: failed to save page failure: ${errorText(persistenceError)}`);
             }
           }
         }
       }));
-      await this.store.finishRun(runId, summary.processed > 0 ? 2 : 3, summary.sitemapUrl,
+      await this.store.finishRun(runId, summary.processed > 0 && !unpersistedPage ? 2 : 3, summary.sitemapUrl,
         summary.failed ? `${summary.failed} page(s) failed. ${summary.errors.slice(-3).join(' | ')}`.slice(0, 2000) : null);
     } catch (error) {
       summary.errors.push(errorText(error));
