@@ -3,25 +3,25 @@
 :root {
   color-scheme: light;
 
-  /* Warm neutrals with one deep green accent. */
-  --surface-canvas: #f7f8f5;
+  /* Neutral graphite with a restrained cobalt accent. */
+  --surface-canvas: #f7f8fa;
   --surface-base: #ffffff;
-  --surface-subtle: #f1f4ef;
-  --surface-raised: #fbfcf9;
-  --ink-primary: #1d2923;
-  --ink-secondary: #536259;
-  --ink-tertiary: #718076;
-  --line-subtle: #e1e7df;
-  --line-strong: #c8d3c9;
-  --accent-base: #216451;
-  --accent-hover: #194d3f;
-  --accent-soft: #e7f2eb;
-  --status-success: #296b48;
-  --status-warning: #90641e;
-  --status-danger: #a7463e;
+  --surface-subtle: #f1f3f6;
+  --surface-raised: #fbfcfd;
+  --ink-primary: #1c2533;
+  --ink-secondary: #596575;
+  --ink-tertiary: #667282;
+  --line-subtle: #dfe4ea;
+  --line-strong: #c8d0da;
+  --accent-base: #345c96;
+  --accent-hover: #294a7a;
+  --accent-soft: #e9eff8;
+  --status-success: #2b6f58;
+  --status-warning: #8c5b24;
+  --status-danger: #a64242;
 
   --layout-gutter: clamp(1rem, 2.5vw, 2.5rem);
-  --layout-max-width: 88rem;
+  --layout-max-width: 82rem;
   --motion-fast: 150ms;
   --motion-standard: 190ms;
   --motion-slow: 220ms;
@@ -90,37 +90,6 @@
 @utility page-container {
   width: min(calc(100% - 2 * var(--layout-gutter)), var(--layout-max-width));
   margin-inline: auto;
-}
-
-.mobile-nav-dialog {
-  position: fixed;
-  inset: 0 auto 0 0;
-  width: min(19rem, calc(100vw - 3rem));
-  height: 100dvh;
-  max-height: 100dvh;
-  margin: 0;
-  padding: 0;
-  border: 0;
-  background: var(--surface-base);
-}
-
-.mobile-nav-dialog[open] {
-  animation: menu-enter var(--motion-slow) var(--motion-ease) both;
-}
-
-.mobile-nav-dialog::backdrop {
-  background: rgb(21 33 26 / 45%);
-  animation: backdrop-enter var(--motion-slow) var(--motion-ease) both;
-}
-
-@keyframes menu-enter {
-  from { transform: translateX(-0.75rem); opacity: 0; }
-  to { transform: translateX(0); opacity: 1; }
-}
-
-@keyframes backdrop-enter {
-  from { opacity: 0; }
-  to { opacity: 1; }
 }
 
 @media (prefers-reduced-motion: reduce) {

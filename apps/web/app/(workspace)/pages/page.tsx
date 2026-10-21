@@ -1,4 +1,6 @@
 import type { Metadata } from 'next';
+import { PagesTable } from '../../../components/pages/pages-table';
+import { previewPages } from './preview-pages';
 
 export const metadata: Metadata = {
   title: 'Pages | SERP',
@@ -7,17 +9,16 @@ export const metadata: Metadata = {
 export default function PagesPage() {
   return (
     <>
-      <header className="border-b border-line pb-8">
-        <p className="text-caption font-semibold uppercase tracking-[0.14em] text-ink-faint">Workspace</p>
-        <h1 className="mt-3 text-page-title font-semibold leading-tight tracking-[-0.04em] text-ink">Pages</h1>
-        <p className="mt-2 max-w-2xl text-sm leading-6 text-ink-muted">
-          Your tracked pages and their search visibility, in one place.
+      <header>
+        <h1 className="text-[clamp(2rem,2.8vw,2.5rem)] font-semibold leading-tight tracking-[-0.05em] text-ink">Pages</h1>
+        <p className="mt-2 max-w-2xl text-[0.9375rem] leading-6 text-ink-muted">
+          Indexed client pages, their search keywords, SEO issues, and latest positions.
         </p>
       </header>
 
-      <section aria-label="Tracked pages preview" className="mt-8 rounded-surface border border-line bg-surface p-6 sm:p-8">
-        <p className="text-sm font-medium text-ink">Tracked pages</p>
-        <p className="mt-1 text-sm leading-6 text-ink-muted">Your page data will appear here.</p>
+      <section aria-label="Pages preview" className="mt-7 sm:mt-8">
+        <p className="mb-2.5 text-xs font-medium text-ink-faint">Sample preview data · Not live results</p>
+        <PagesTable pages={previewPages} />
       </section>
     </>
   );
