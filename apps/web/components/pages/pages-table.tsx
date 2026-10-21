@@ -1,9 +1,18 @@
-import type { PageListRow } from '../../lib/pages-data';
+import type { ClientSummary, PageListRow } from '../../lib/pages-data';
 
-function ClientIdentity({ clientId }: { clientId: string }) {
+function ClientIdentity({ client }: { client: ClientSummary | undefined }) {
+  if (!client) {
+    return <span className="text-sm text-ink-faint">Unavailable</span>;
+  }
+
   return (
-    <span title={`Client ${clientId}; client details are not included in this response`} className="text-sm text-ink-faint">
-      Unavailable
+    <span className="block min-w-0 pt-0.5">
+      <span title={client.name} className="block truncate text-sm text-ink-muted">{client.name}</span>
+      {client.name !== client.normalizedDomain && (
+        <span title={client.normalizedDomain} className="mt-0.5 block truncate text-xs text-ink-faint">
+          {client.normalizedDomain}
+        </span>
+      )}
     </span>
   );
 }
@@ -66,7 +75,13 @@ function IssueCount({ count, showLabel = false }: { count: number; showLabel?: b
   );
 }
 
-export function PagesTable({ pages }: { pages: readonly PageListRow[] }) {
+export function PagesTable({
+  pages,
+  clientsById,
+}: {
+  pages: readonly PageListRow[];
+  clientsById: ReadonlyMap<string, ClientSummary>;
+}) {
   return (
     <>
       <div className="hidden lg:block">
@@ -96,7 +111,7 @@ export function PagesTable({ pages }: { pages: readonly PageListRow[] }) {
               >
                 <td className="py-[1.125rem] pr-6 align-top"><PageIdentity page={page} /></td>
                 <td className="px-3 py-[1.125rem] align-top">
-                  <ClientIdentity clientId={page.clientId} />
+                  <ClientIdentity client={clientsById.get(page.clientId)} />
                 </td>
                 <td className="px-3 py-[1.125rem] align-top"><KeywordSummary keywords={page.keywords} /></td>
                 <td className="px-3 py-[1.125rem] text-right align-top"><IssueCount count={page.issueCount} /></td>
@@ -122,7 +137,7 @@ export function PagesTable({ pages }: { pages: readonly PageListRow[] }) {
             </div>
             <div className="mt-4 grid min-w-0 grid-cols-[minmax(0,1fr)_auto] items-baseline gap-x-4 gap-y-1.5">
               <p className="min-w-0 truncate text-sm text-ink-muted">
-                <ClientIdentity clientId={page.clientId} />
+                <ClientIdentity client={clientsById.get(page.clientId)} />
               </p>
               <p className="text-right"><IssueCount count={page.issueCount} showLabel /></p>
               <div className="col-span-2 min-w-0 text-sm"><KeywordSummary keywords={page.keywords} /></div>

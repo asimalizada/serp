@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { after, before, test } from 'node:test';
 import { apiRequest } from '../lib/api-client.ts';
-import { loadPages } from '../lib/pages-data.ts';
+import { loadClients, loadPages, pagesPath } from '../lib/pages-data.ts';
 
 const originalFetch = globalThis.fetch;
 const originalWindow = globalThis.window;
@@ -36,7 +36,8 @@ function response(items) {
 test('loads the default first page with cookies and validates consumed fields', async () => {
   const calls = [];
   globalThis.fetch = async (request) => {
-    calls.push({ path: new URL(request.url).pathname, credentials: request.credentials, method: request.method });
+    const url = new URL(request.url);
+    calls.push({ path: url.pathname + url.search, credentials: request.credentials, method: request.method });
     return Response.json(response([item]));
   };
 
@@ -45,7 +46,31 @@ test('loads the default first page with cookies and validates consumed fields', 
   assert.equal(result.data.items[0].current.title, 'Actual article title');
   assert.equal(result.data.items[0].latestRank.position, 7);
   assert.equal(result.data.items[0].keywords[0].phrase, 'article topic');
-  assert.deepEqual(calls, [{ path: '/pages', credentials: 'include', method: 'GET' }]);
+  assert.deepEqual(calls, [{ path: '/pages?page=1', credentials: 'include', method: 'GET' }]);
+});
+
+test('uses backend search, clientId, and page query parameters together', async () => {
+  const clientId = '536b84f6-220b-4fd7-a590-1230208748e1';
+  const query = { search: 'seo guide', clientId, page: 2 };
+  assert.equal(
+    pagesPath(query),
+    `/pages?page=2&search=seo+guide&clientId=${clientId}`,
+  );
+
+  let requestedUrl = '';
+  globalThis.fetch = async (request) => {
+    requestedUrl = request.url;
+    return Response.json({
+      items: [item],
+      pagination: { page: 2, pageSize: 20, total: 21, totalPages: 2 },
+    });
+  };
+  const result = await loadPages(apiRequest, query);
+  assert.equal(result.kind, 'success');
+  assert.equal(result.data.pagination.page, 2);
+  assert.equal(new URL(requestedUrl).searchParams.get('search'), 'seo guide');
+  assert.equal(new URL(requestedUrl).searchParams.get('clientId'), clientId);
+  assert.equal(new URL(requestedUrl).searchParams.get('page'), '2');
 });
 
 test('accepts an empty list and missing current analysis or rank', async () => {
@@ -93,4 +118,33 @@ test('rejects invalid response shapes without showing fabricated rows', async ()
 
   globalThis.fetch = async () => new Response('not JSON', { status: 200 });
   assert.deepEqual(await loadPages(apiRequest), { kind: 'invalid-response' });
+
+  globalThis.fetch = async () => Response.json({
+    items: [item], pagination: { page: 2, pageSize: 20, total: 21, totalPages: 2 },
+  });
+  assert.deepEqual(await loadPages(apiRequest, { page: 1 }), { kind: 'invalid-response' });
+});
+
+test('loads owned client identities for the selector and table', async () => {
+  const client = {
+    id: '536b84f6-220b-4fd7-a590-1230208748e1',
+    name: 'Example',
+    websiteUrl: 'https://example.com',
+    normalizedDomain: 'example.com',
+  };
+  const calls = [];
+  globalThis.fetch = async (request) => {
+    calls.push({ path: new URL(request.url).pathname, credentials: request.credentials });
+    return Response.json({ clients: [client] });
+  };
+  assert.deepEqual(await loadClients(apiRequest), { kind: 'success', clients: [client] });
+  assert.deepEqual(calls, [{ path: '/clients', credentials: 'include' }]);
+});
+
+test('reports client lookup failures without inventing client names', async () => {
+  globalThis.fetch = async () => { throw new TypeError('offline'); };
+  assert.deepEqual(await loadClients(apiRequest), { kind: 'network-error' });
+
+  globalThis.fetch = async () => Response.json({ clients: [{ id: 'bad', name: 'Wrong' }] });
+  assert.deepEqual(await loadClients(apiRequest), { kind: 'invalid-response' });
 });
