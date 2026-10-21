@@ -3,10 +3,10 @@
   "version": "0.0.0",
   "private": true,
   "scripts": {
-    "dev": "next dev",
-    "build": "next build",
+    "dev": "pnpm --filter @serp/shared build && next dev",
+    "build": "pnpm --filter @serp/shared build && next build",
     "start": "next start",
-    "typecheck": "tsc --noEmit",
+    "typecheck": "pnpm --filter @serp/shared build && tsc --noEmit",
     "lint": "eslint .",
     "test": "node --experimental-strip-types --test test/*.test.mjs",
     "test:api-client": "node --experimental-strip-types --test test/api-client.test.mjs"

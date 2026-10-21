@@ -29,6 +29,12 @@
       "require": "./dist/schemas/auth.schema.js",
       "default": "./dist/schemas/auth.schema.js"
     },
+    "./schemas/user.schema": {
+      "types": "./dist/schemas/user.schema.d.ts",
+      "import": "./dist/schemas/user.schema.js",
+      "require": "./dist/schemas/user.schema.js",
+      "default": "./dist/schemas/user.schema.js"
+    },
     "./*": {
       "types": "./dist/*.d.ts",
       "import": "./dist/*.js",
