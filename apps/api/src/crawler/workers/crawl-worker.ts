@@ -1,7 +1,6 @@
 import { BeforeApplicationShutdown, Injectable, Logger, OnApplicationBootstrap } from '@nestjs/common';
 import { PrismaService } from '../../database/prisma.service';
 import { CrawlService } from '../crawl-service';
-import { isLikelyBlogArticle } from '../blog-url';
 import { CrawlRunNotPendingError } from '../persistence/prisma-crawl.store';
 
 @Injectable()
@@ -57,7 +56,7 @@ export class CrawlWorker implements OnApplicationBootstrap, BeforeApplicationShu
       while (!this.stopping) {
         this.scheduled = false;
         const run = await this.prisma.crawlRun.findFirst({
-          where: { status: 0 }, orderBy: { createdAt: 'asc' },
+          where: { status: 0, client: { archivedAt: null } }, orderBy: { createdAt: 'asc' },
           select: { id: true, clientId: true, client: { select: { websiteUrl: true } } }
         });
         if (!run) {
@@ -67,15 +66,8 @@ export class CrawlWorker implements OnApplicationBootstrap, BeforeApplicationShu
           break;
         }
         try {
-          const successful = await this.prisma.page.findMany({
-            where: {
-              clientId: run.clientId,
-              pageCrawls: { some: { status: 2 } }
-            }, select: { url: true }
-          });
-          const urls = new Set(successful.map(({ url }) => url)
-            .filter((url) => isLikelyBlogArticle(url, run.client.websiteUrl)));
-          await this.crawler.crawlClient(run.clientId, urls, run.id, this.abortController.signal);
+          // A new queued run is a full crawl; seed-only recovery passes its own skip set.
+          await this.crawler.crawlClient(run.clientId, new Set(), run.id, this.abortController.signal);
         } catch (error) {
           if (error instanceof CrawlRunNotPendingError) {
             this.logger.debug?.(`Crawl run ${run.id} was claimed by another worker; skipping`);

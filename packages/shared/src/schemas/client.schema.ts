@@ -8,3 +8,9 @@ export const createClientSchema = z
   .strict();
 
 export type CreateClientInput = z.infer<typeof createClientSchema>;
+
+export const clientListQuerySchema = z.object({
+  status: z.enum(['active', 'archived']).default('active'),
+}).strict();
+
+export type ClientListQuery = z.infer<typeof clientListQuerySchema>;

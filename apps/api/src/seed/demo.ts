@@ -45,12 +45,23 @@ export interface SeedCrawlResult { clientId: string; skipped: boolean; priorSucc
 export async function crawlDemoClients(prisma: PrismaClient, crawler: CrawlService, clientIds: string[]): Promise<SeedCrawlResult[]> {
   const results: SeedCrawlResult[] = [];
   for (const clientId of clientIds) {
-    const client = await prisma.client.findUniqueOrThrow({ where: { id: clientId }, select: { websiteUrl: true } });
+    const client = await prisma.client.findUniqueOrThrow({ where: { id: clientId }, select: { websiteUrl: true, archivedAt: true } });
     const successful = await prisma.page.findMany({
       where: { clientId, pageCrawls: { some: { status: 2 } } }, select: { url: true },
     });
     const successfulUrls = new Set(successful.map(({ url }) => url)
       .filter((url) => isLikelyBlogArticle(url, client.websiteUrl)));
+    if (client.archivedAt) {
+      results.push({ clientId, skipped: true, priorSuccessfulPages: successfulUrls.size });
+      continue;
+    }
+    const activeRun = await prisma.crawlRun.findFirst({
+      where: { clientId, status: { in: [0, 1] } }, select: { id: true },
+    });
+    if (activeRun) {
+      results.push({ clientId, skipped: true, priorSuccessfulPages: successfulUrls.size });
+      continue;
+    }
     if (successfulUrls.size >= 15) {
       results.push({ clientId, skipped: true, priorSuccessfulPages: successfulUrls.size });
       continue;

@@ -1,5 +1,5 @@
-import { Body, Controller, Get, HttpCode, Param, ParseUUIDPipe, Post, Req, UseGuards } from '@nestjs/common';
-import { createClientSchema, CreateClientInput } from '@serp/shared';
+import { Body, Controller, Get, HttpCode, Param, ParseUUIDPipe, Patch, Post, Query, Req, UseGuards } from '@nestjs/common';
+import { clientListQuerySchema, ClientListQuery, createClientSchema, CreateClientInput } from '@serp/shared';
 import { AuthGuard, AuthRequest } from '../auth/guards/auth.guard';
 import { ZodValidationPipe } from '../common/pipes/zod-validation.pipe';
 import { ClientsService } from './clients.service';
@@ -10,8 +10,8 @@ export class ClientsController {
   constructor(private readonly clients: ClientsService) {}
 
   @Get()
-  list(@Req() request: AuthRequest) {
-    return this.clients.list(request.user.id);
+  list(@Req() request: AuthRequest, @Query(new ZodValidationPipe(clientListQuerySchema)) query: ClientListQuery) {
+    return this.clients.list(request.user.id, query);
   }
 
   @Post()
@@ -26,5 +26,21 @@ export class ClientsController {
   @Get(':id/crawl-status')
   crawlStatus(@Req() request: AuthRequest, @Param('id', ParseUUIDPipe) id: string) {
     return this.clients.crawlStatus(request.user.id, id);
+  }
+
+  @Patch(':id/archive')
+  archive(@Req() request: AuthRequest, @Param('id', ParseUUIDPipe) id: string) {
+    return this.clients.setArchived(request.user.id, id, true);
+  }
+
+  @Patch(':id/unarchive')
+  unarchive(@Req() request: AuthRequest, @Param('id', ParseUUIDPipe) id: string) {
+    return this.clients.setArchived(request.user.id, id, false);
+  }
+
+  @Post(':id/recrawl')
+  @HttpCode(202)
+  recrawl(@Req() request: AuthRequest, @Param('id', ParseUUIDPipe) id: string) {
+    return this.clients.recrawl(request.user.id, id);
   }
 }

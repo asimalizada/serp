@@ -58,7 +58,7 @@ export class PagesRepository {
     options: PageFilterOptions,
   ): Promise<PaginatedPagesDbResult> {
     const where: Prisma.PageWhereInput = {
-      client: { userId },
+      client: { userId, archivedAt: null },
       ...(options.clientId ? { clientId: options.clientId } : {}),
       ...(options.url ? { url: { contains: options.url, mode: 'insensitive' } } : {}),
       ...(options.keyword
@@ -96,7 +96,7 @@ export class PagesRepository {
 
   async findPageById(userId: string, pageId: string): Promise<PageWithAnalysisRecord | null> {
     const page = await this.prisma.page.findFirst({
-      where: { id: pageId, client: { userId } },
+      where: { id: pageId, client: { userId, archivedAt: null } },
       select: {
         id: true,
         clientId: true,
@@ -111,7 +111,7 @@ export class PagesRepository {
 
   async pageExistsForTenant(userId: string, pageId: string): Promise<boolean> {
     const page = await this.prisma.page.findFirst({
-      where: { id: pageId, client: { userId } },
+      where: { id: pageId, client: { userId, archivedAt: null } },
       select: { id: true },
     });
 
@@ -127,7 +127,7 @@ export class PagesRepository {
       where: {
         id: pageKeywordId,
         pageId,
-        page: { client: { userId } },
+        page: { client: { userId, archivedAt: null } },
       },
       select: {
         id: true,
@@ -151,7 +151,7 @@ export class PagesRepository {
         pageKeyword: {
           id: pageKeywordId,
           pageId,
-          page: { client: { userId } },
+          page: { client: { userId, archivedAt: null } },
         },
         snapshotDate: {
           gte: new Date(Date.UTC(start.getUTCFullYear(), start.getUTCMonth(), start.getUTCDate())),

@@ -36,6 +36,15 @@ let adminPrisma;
 let testPrisma;
 let testUser;
 let testClient;
+let auxiliaryClientNumber = 0;
+
+async function auxiliaryClient() {
+  const number = ++auxiliaryClientNumber;
+  return testPrisma.client.create({ data: {
+    userId: testUser.id, name: `Auxiliary ${number}`,
+    websiteUrl: `https://aux-${number}.example.com`, normalizedDomain: `aux-${number}.example.com`,
+  } });
+}
 
 before(async () => {
   adminPrisma = new PrismaClient({ adapter: new PrismaPg({ connectionString: originalDbUrl }) });
@@ -134,20 +143,8 @@ test('successful crawl completion updates run status to 2 with timing timestamps
 
 test('exception before claiming transitions 0 -> 1 -> 3 with error recorded', async () => {
   const run = await testPrisma.crawlRun.create({ data: { clientId: testClient.id, status: 0 } });
-  const throwingPrisma = new Proxy(testPrisma, {
-    get(target, prop) {
-      if (prop === 'page') {
-        return {
-          findMany: async () => {
-            throw new Error('Pre-claim failure: database transient error');
-          },
-        };
-      }
-      return target[prop];
-    },
-  });
-  const crawler = { crawlClient: async () => assert.fail('crawler should not run') };
-  const worker = new CrawlWorker(throwingPrisma, crawler);
+  const crawler = { crawlClient: async () => { throw new Error('Pre-claim failure: database transient error'); } };
+  const worker = new CrawlWorker(testPrisma, crawler);
   await worker.processQueue();
 
   const failed = await testPrisma.crawlRun.findUnique({ where: { id: run.id } });
@@ -180,7 +177,8 @@ test('exception after claiming transitions 1 -> 3 without leaving run in running
 test('concurrent workers process distinct pending runs without duplicate claims', async () => {
   const runIds = [];
   for (let i = 0; i < 5; i++) {
-    const run = await testPrisma.crawlRun.create({ data: { clientId: testClient.id, status: 0 } });
+    const client = await auxiliaryClient();
+    const run = await testPrisma.crawlRun.create({ data: { clientId: client.id, status: 0 } });
     runIds.push(run.id);
   }
   const store = new PrismaCrawlStore(testPrisma);
@@ -218,7 +216,8 @@ test('concurrent workers process distinct pending runs without duplicate claims'
 });
 
 test('application restart preserves running jobs untouched while processing pending work', async () => {
-  const existingRunning = await testPrisma.crawlRun.create({ data: { clientId: testClient.id, status: 1 } });
+  const abandonedClient = await auxiliaryClient();
+  const existingRunning = await testPrisma.crawlRun.create({ data: { clientId: abandonedClient.id, status: 1 } });
   const pendingRun = await testPrisma.crawlRun.create({ data: { clientId: testClient.id, status: 0 } });
 
   const store = new PrismaCrawlStore(testPrisma);
@@ -249,8 +248,10 @@ test('PrismaCrawlStore handles concurrent page persistence and deduplication on 
   const store = new PrismaCrawlStore(testPrisma);
   await store.ensureIssueTypes();
 
-  const runA = await testPrisma.crawlRun.create({ data: { clientId: testClient.id, status: 1 } });
-  const runB = await testPrisma.crawlRun.create({ data: { clientId: testClient.id, status: 1 } });
+  const clientA = await auxiliaryClient();
+  const clientB = await auxiliaryClient();
+  const runA = await testPrisma.crawlRun.create({ data: { clientId: clientA.id, status: 1 } });
+  const runB = await testPrisma.crawlRun.create({ data: { clientId: clientB.id, status: 1 } });
 
   const crypto = require('node:crypto');
   const hashA = crypto.createHash('sha256').update('content-a').digest('hex');
@@ -292,8 +293,8 @@ test('PrismaCrawlStore handles concurrent page persistence and deduplication on 
 
   // Run both saves concurrently
   await Promise.all([
-    store.savePage(testClient.id, runA.id, 'https://example.com/blog/page-a', 1, analysisA),
-    store.savePage(testClient.id, runB.id, 'https://example.com/blog/page-b', 1, analysisB),
+    store.savePage(clientA.id, runA.id, 'https://example.com/blog/page-a', 1, analysisA),
+    store.savePage(clientB.id, runB.id, 'https://example.com/blog/page-b', 1, analysisB),
   ]);
 
   // Verify that shared keyword was created exactly once
@@ -309,6 +310,10 @@ test('PrismaCrawlStore handles concurrent page persistence and deduplication on 
   assert.equal(crawlsB.length, 1);
   assert.equal(crawlsA[0].status, 2);
   assert.equal(crawlsB[0].status, 2);
+  await Promise.all([
+    store.finishRun(runA.id, 2, null, null),
+    store.finishRun(runB.id, 2, null, null),
+  ]);
 });
 
 test('ClientsRepository creates client and crawl run atomically on real database', async () => {
@@ -362,6 +367,58 @@ test('ClientsRepository enforces tenant isolation in existsForUser and listWithS
 
   assert.ok(testUserClients.some((c) => c.id === testClient.id));
   assert.equal(otherUserClients.length, 0);
+});
+
+test('archive preserves history, hides pages, and serializes concurrent recrawl requests', async () => {
+  const repo = new ClientsRepository(testPrisma);
+  const pagesRepo = new PagesRepository(testPrisma);
+  const client = await auxiliaryClient();
+  const page = await testPrisma.page.create({ data: {
+    clientId: client.id, url: `${client.websiteUrl}/blog/historical-page`,
+  } });
+  const keyword = await testPrisma.keyword.create({ data: { phrase: `archive test keyword ${auxiliaryClientNumber}` } });
+  const relation = await testPrisma.pageKeyword.create({ data: { pageId: page.id, keywordId: keyword.id } });
+  const snapshot = await testPrisma.rankSnapshot.create({ data: {
+    pageKeywordId: relation.id, snapshotDate: new Date('2026-10-20T00:00:00Z'),
+    snapshotAt: new Date('2026-10-20T12:00:00Z'), position: 12,
+  } });
+
+  const foreignUserId = '00000000-0000-4000-8000-000000000001';
+  assert.equal((await repo.setArchived(foreignUserId, client.id, true)).kind, 'not-found');
+  assert.equal((await repo.queueRecrawl(foreignUserId, client.id)).kind, 'not-found');
+  assert.equal((await repo.setArchived(testUser.id, client.id, true)).kind, 'changed');
+  assert.equal((await repo.setArchived(testUser.id, client.id, true)).kind, 'unchanged');
+  assert.equal((await repo.listWithSummary(testUser.id)).some((item) => item.id === client.id), false);
+  assert.equal((await repo.listWithSummary(testUser.id, 'archived')).some((item) => item.id === client.id), true);
+  assert.equal(await pagesRepo.pageExistsForTenant(testUser.id, page.id), false);
+  assert.equal(await pagesRepo.findPageById(testUser.id, page.id), null);
+  assert.deepEqual(await pagesRepo.findRankSnapshotsForTenant(testUser.id, page.id, relation.id,
+    new Date('2026-10-20T00:00:00Z'), new Date('2026-10-21T00:00:00Z')), []);
+  assert.equal((await repo.queueRecrawl(testUser.id, client.id)).kind, 'archived');
+  const crawlStore = new PrismaCrawlStore(testPrisma);
+  assert.equal(await crawlStore.getClient(client.id), null);
+  await assert.rejects(crawlStore.createRun(client.id), /Client is archived or unavailable/);
+  assert.equal((await testPrisma.rankSnapshot.findUnique({ where: { id: snapshot.id } })).position, 12);
+
+  assert.equal((await repo.setArchived(testUser.id, client.id, false)).kind, 'changed');
+  assert.equal((await repo.setArchived(testUser.id, client.id, false)).kind, 'unchanged');
+  assert.equal(await pagesRepo.pageExistsForTenant(testUser.id, page.id), true);
+  assert.equal((await pagesRepo.findRankSnapshotsForTenant(testUser.id, page.id, relation.id,
+    new Date('2026-10-20T00:00:00Z'), new Date('2026-10-21T00:00:00Z'))).length, 1);
+  assert.equal((await repo.listWithSummary(testUser.id)).some((item) => item.id === client.id), true);
+
+  const results = await Promise.all([
+    repo.queueRecrawl(testUser.id, client.id), repo.queueRecrawl(testUser.id, client.id),
+  ]);
+  assert.deepEqual(results.map((result) => result.kind).sort(), ['active-crawl', 'created']);
+  assert.equal((await repo.setArchived(testUser.id, client.id, true)).kind, 'active-crawl');
+  const runId = results.find((result) => result.kind === 'created').crawlRun.id;
+  await testPrisma.crawlRun.update({ where: { id: runId }, data: { status: 1, startedAt: new Date() } });
+  assert.equal((await repo.setArchived(testUser.id, client.id, true)).kind, 'active-crawl');
+  await testPrisma.crawlRun.update({ where: { id: runId }, data: { status: 2, finishedAt: new Date() } });
+  assert.equal((await repo.setArchived(testUser.id, client.id, true)).kind, 'changed');
+  assert.equal((await testPrisma.page.findUnique({ where: { id: page.id } })).id, page.id);
+  assert.equal((await testPrisma.rankSnapshot.findUnique({ where: { id: snapshot.id } })).position, 12);
 });
 
 test('ClientsRepository.findLatestCrawlStatus returns latest run with processed and failed counts', async () => {

@@ -5,7 +5,8 @@ const { CrawlRunNotPendingError } = require('../dist/crawler/persistence/prisma-
 const { ClientsService } = require('../dist/clients/clients.service.js');
 const { ClientsRepository } = require('../dist/clients/repositories/clients.repository.js');
 const { DuplicateClientError } = require('../dist/clients/errors/duplicate-client.error.js');
-const { createClientSchema } = require('@serp/shared');
+const { createClientSchema, clientListQuerySchema } = require('@serp/shared');
+const { describeCrawlError } = require('../dist/clients/crawl-error.js');
 const { ZodValidationPipe } = require('../dist/common/pipes/zod-validation.pipe.js');
 
 test('startup preserves running crawl history and processes only pending work', async () => {
@@ -35,7 +36,7 @@ test('startup preserves running crawl history and processes only pending work', 
   await worker.onApplicationBootstrap();
   assert.equal(runs[0].status, 1);
   await worker.processQueue();
-  assert.deepEqual(calls, [{ clientId: 'client', skip: ['https://example.com/blog/already-done'], runId: 'pending' }]);
+  assert.deepEqual(calls, [{ clientId: 'client', skip: [], runId: 'pending' }]);
   assert.equal(runs[1].status, 2);
   await worker.beforeApplicationShutdown();
 });
@@ -55,18 +56,13 @@ test('handles exception before claiming by transitioning 0 -> 1 -> 3', async () 
         return { count: 1 };
       },
     },
-    page: {
-      findMany: async () => {
-        throw new Error('Database error during page lookup');
-      },
-    },
   };
-  const crawler = { crawlClient: async () => assert.fail('crawler should not be called') };
+  const crawler = { crawlClient: async () => { throw new Error('Failure before claiming the run'); } };
   const worker = new CrawlWorker(prisma, crawler);
   await worker.processQueue();
   assert.deepEqual(transitions, ['0->1', '1->3']);
   assert.equal(run.status, 3);
-  assert.match(run.error, /Database error during page lookup/);
+  assert.match(run.error, /Failure before claiming the run/);
 });
 
 test('handles exception after claiming by transitioning 1 -> 3 without leaving run in running state', async () => {
@@ -311,7 +307,8 @@ test('ClientsService.list formats client summaries returned by ClientsRepository
       normalizedDomain: 'example.com',
       createdAt: new Date(),
       pageCount: 15,
-      latestCrawl: { id: 'run-1', status: 2, createdAt: new Date(), startedAt: new Date(), finishedAt: new Date() },
+      latestCrawl: { id: 'run-1', status: 2, error: null, processedPages: 15, failedPages: 0,
+        createdAt: new Date(), startedAt: new Date(), finishedAt: new Date() },
     },
   ];
   const repo = {
@@ -338,6 +335,7 @@ test('ClientsService.crawlStatus enforces tenant ownership and returns crawl sta
       finishedAt: new Date(),
       processedPages: 12,
       failedPages: 1,
+      pageFailures: [],
     }),
   };
   const service = new ClientsService(repo, {}, {});
@@ -357,6 +355,48 @@ test('ClientsService.crawlStatus enforces tenant ownership and returns crawl sta
   assert.equal(status.clientId, 'client-1');
   assert.equal(status.crawlRun.processedPages, 12);
   assert.equal(status.crawlRun.failedPages, 1);
+});
+
+test('client list query defaults to active and accepts only an explicit archived view', () => {
+  assert.deepEqual(clientListQuerySchema.parse({}), { status: 'active' });
+  assert.deepEqual(clientListQuerySchema.parse({ status: 'archived' }), { status: 'archived' });
+  assert.equal(clientListQuerySchema.safeParse({ status: 'all' }).success, false);
+});
+
+test('ClientsService archives idempotently, rejects active crawls, and schedules recrawls once', async () => {
+  let scheduled = 0;
+  let archiveResult = { kind: 'changed', archivedAt: new Date('2026-10-21T00:00:00Z') };
+  let recrawlResult = { kind: 'created', crawlRun: { id: 'run-1', status: 0 } };
+  const repo = {
+    setArchived: async () => archiveResult,
+    queueRecrawl: async () => recrawlResult,
+  };
+  const service = new ClientsService(repo, { schedule: () => { scheduled++; } }, {});
+  assert.equal((await service.setArchived('u1', 'c1', true)).changed, true);
+  archiveResult = { kind: 'unchanged', archivedAt: archiveResult.archivedAt };
+  assert.equal((await service.setArchived('u1', 'c1', true)).changed, false);
+  archiveResult = { kind: 'active-crawl' };
+  await assert.rejects(service.setArchived('u1', 'c1', true), { name: 'ConflictException' });
+  archiveResult = { kind: 'not-found' };
+  await assert.rejects(service.setArchived('u1', 'c1', true), { name: 'NotFoundException' });
+
+  assert.equal((await service.recrawl('u1', 'c1')).crawlRun.status, 0);
+  assert.equal(scheduled, 1);
+  recrawlResult = { kind: 'active-crawl' };
+  await assert.rejects(service.recrawl('u1', 'c1'), { name: 'ConflictException' });
+  recrawlResult = { kind: 'archived' };
+  await assert.rejects(service.recrawl('u1', 'c1'), { name: 'ConflictException' });
+  recrawlResult = { kind: 'not-found' };
+  await assert.rejects(service.recrawl('u1', 'c1'), { name: 'NotFoundException' });
+  assert.equal(scheduled, 1);
+});
+
+test('crawl failure descriptions reveal known facts without echoing untrusted text', () => {
+  assert.equal(describeCrawlError('No qualifying blog posts found in accessible sitemaps'),
+    'No qualifying blog articles were found in accessible sitemaps.');
+  assert.equal(describeCrawlError('HTTP 404'), 'The website returned HTTP 404.');
+  assert.equal(describeCrawlError('secret=private-key stack trace'),
+    'The crawl could not be completed. Review the page failure count or try again.');
 });
 
 test('ClientsRepository.createWithInitialRun translates Prisma P2002 to DuplicateClientError', async () => {

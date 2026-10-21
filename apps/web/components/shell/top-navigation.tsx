@@ -17,6 +17,7 @@ export function TopNavigation({
 }) {
   const pathname = usePathname();
   const pagesActive = pathname === '/pages' || pathname.startsWith('/pages/');
+  const clientsActive = pathname === '/clients' || pathname.startsWith('/clients/');
   const settingsActive = pathname === '/settings';
   return (
     <header className="border-b border-line bg-surface">
@@ -36,6 +37,13 @@ export function TopNavigation({
             className={`inline-flex min-w-14 items-center justify-center border-b-2 pt-0.5 text-sm font-medium transition-[color,border-color] duration-[var(--motion-fast)] hover:text-accent-hover hover:border-accent-hover ${pagesActive ? 'border-accent text-ink' : 'border-transparent text-ink-muted'}`}
           >
             Pages
+          </Link>
+          <Link
+            href="/clients"
+            aria-current={clientsActive ? 'page' : undefined}
+            className={`inline-flex min-w-16 items-center justify-center border-b-2 px-1 pt-0.5 text-sm font-medium transition-[color,border-color] duration-[var(--motion-fast)] hover:text-accent-hover hover:border-accent-hover ${clientsActive ? 'border-accent text-ink' : 'border-transparent text-ink-muted'}`}
+          >
+            Clients
           </Link>
           <Link
             href="/settings"

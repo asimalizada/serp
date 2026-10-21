@@ -44,6 +44,7 @@ model Client {
   websiteUrl       String     @db.Text
   normalizedDomain String     @db.VarChar(253)
   createdAt        DateTime   @default(now()) @db.Timestamptz(6)
+  archivedAt       DateTime?  @db.Timestamptz(6)
   user             User       @relation(fields: [userId], references: [id], onDelete: Restrict, onUpdate: Restrict)
   pages            Page[]
   crawlRuns        CrawlRun[]

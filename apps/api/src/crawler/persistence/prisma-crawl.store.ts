@@ -34,14 +34,21 @@ export class PrismaCrawlStore implements CrawlStore {
 
   async getClient(clientId: string): Promise<{ id: string; websiteUrl: string } | null> {
     return this.prisma.client.findUnique({
-      where: { id: clientId },
+      where: { id: clientId, archivedAt: null },
       select: { id: true, websiteUrl: true },
     });
   }
 
   async createRun(clientId: string): Promise<string> {
-    const run = await this.prisma.crawlRun.create({ data: { clientId, status: 0 } });
-    return run.id;
+    return this.prisma.$transaction(async (tx) => {
+      const activeClient = await tx.$queryRaw<{ id: string }[]>`
+        SELECT "id" FROM "Clients" WHERE "id" = ${clientId}::uuid
+          AND "archivedAt" IS NULL FOR UPDATE
+      `;
+      if (!activeClient.length) throw new Error('Client is archived or unavailable for crawling');
+      const run = await tx.crawlRun.create({ data: { clientId, status: 0 } });
+      return run.id;
+    });
   }
 
   async startRun(runId: string): Promise<void> {

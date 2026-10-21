@@ -4,10 +4,14 @@ export interface ClientListItem {
   websiteUrl: string;
   normalizedDomain: string;
   createdAt: Date;
+  archivedAt: Date | null;
   pageCount: number;
   latestCrawl: {
     id: string;
     status: number;
+    error: string | null;
+    processedPages: number;
+    failedPages: number;
     createdAt: Date;
     startedAt: Date | null;
     finishedAt: Date | null;
@@ -46,4 +50,5 @@ export interface LatestCrawlStatus {
   finishedAt: Date | null;
   processedPages: number;
   failedPages: number;
+  pageFailures: { url: string; httpStatusCode: number | null; error: string | null }[];
 }

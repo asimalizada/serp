@@ -38,7 +38,8 @@ test('seed crawl skips complete clients and retries only missing URLs after part
     ['client-b', ['https://example.org/blog/one']]]);
   const calls = [];
   const prisma = {
-    client: { findUniqueOrThrow: async ({ where }) => ({ websiteUrl: where.id === 'client-a' ? 'https://example.com' : 'https://example.org' }) },
+    client: { findUniqueOrThrow: async ({ where }) => ({ websiteUrl: where.id === 'client-a' ? 'https://example.com' : 'https://example.org', archivedAt: null }) },
+    crawlRun: { findFirst: async () => null },
     page: { findMany: async ({ where }) => completed.get(where.clientId).map((url) => ({ url })) },
   };
   const crawler = { crawlClient: async (clientId, skip) => {
@@ -51,6 +52,17 @@ test('seed crawl skips complete clients and retries only missing URLs after part
   assert.deepEqual(calls, [{ clientId: 'client-b', skip: ['https://example.org/blog/one'] }]);
   assert.equal(first[1].summary.processed, 1);
   assert.deepEqual(completed.get('client-b'), ['https://example.org/blog/one', 'https://example.org/blog/two']);
+});
+
+test('seed does not crawl or restore archived clients', async () => {
+  const prisma = {
+    client: { findUniqueOrThrow: async () => ({ websiteUrl: 'https://example.com', archivedAt: new Date() }) },
+    page: { findMany: async () => [] },
+    crawlRun: { findFirst: async () => assert.fail('archived clients must not be checked for active jobs') },
+  };
+  const crawler = { crawlClient: async () => assert.fail('archived clients must not be crawled') };
+  const result = await crawlDemoClients(prisma, crawler, ['archived-client']);
+  assert.deepEqual(result, [{ clientId: 'archived-client', skipped: true, priorSuccessfulPages: 0 }]);
 });
 
 test('rank dates, positions, and UTC timestamps are deterministic and bounded', () => {
