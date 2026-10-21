@@ -1,6 +1,5 @@
 import type { Metadata } from 'next';
-import { PagesTable } from '../../../components/pages/pages-table';
-import { previewPages } from './preview-pages';
+import { PagesContent } from '../../../components/pages/pages-content';
 
 export const metadata: Metadata = {
   title: 'Pages | SERP',
@@ -16,10 +15,7 @@ export default function PagesPage() {
         </p>
       </header>
 
-      <section aria-label="Pages preview" className="mt-7 sm:mt-8">
-        <p className="mb-2.5 text-xs font-medium text-ink-faint">Sample preview data · Not live results</p>
-        <PagesTable pages={previewPages} />
-      </section>
+      <PagesContent />
     </>
   );
 }

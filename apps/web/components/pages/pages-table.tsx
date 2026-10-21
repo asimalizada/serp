@@ -1,16 +1,11 @@
-// Displayed fields are a subset of the backend GET /pages item contract.
-export type PageListRow = {
-  id: string;
-  clientId: string;
-  url: string;
-  current: { title: string | null } | null;
-  keywords: ReadonlyArray<{ phrase: string; relevanceScore: number }>;
-  issueCount: number;
-  latestRank: { position: number } | null;
-};
+import type { PageListRow } from '../../lib/pages-data';
 
-function clientDomain(url: string): string {
-  return new URL(url).hostname.replace(/^www\./, '');
+function ClientIdentity({ clientId }: { clientId: string }) {
+  return (
+    <span title={`Client ${clientId}; client details are not included in this response`} className="text-sm text-ink-faint">
+      Unavailable
+    </span>
+  );
 }
 
 function PageIdentity({ page }: { page: PageListRow }) {
@@ -76,7 +71,7 @@ export function PagesTable({ pages }: { pages: readonly PageListRow[] }) {
     <>
       <div className="hidden lg:block">
         <table className="w-full table-fixed border-collapse border-t border-line-strong text-left">
-          <caption className="sr-only">Sample pages, client domains, keywords, SEO issues, and latest ranking positions</caption>
+          <caption className="sr-only">Pages, clients, keywords, SEO issues, and latest ranking positions</caption>
           <colgroup>
             <col style={{ width: '44%' }} />
             <col style={{ width: '16%' }} />
@@ -101,9 +96,7 @@ export function PagesTable({ pages }: { pages: readonly PageListRow[] }) {
               >
                 <td className="py-[1.125rem] pr-6 align-top"><PageIdentity page={page} /></td>
                 <td className="px-3 py-[1.125rem] align-top">
-                  <span title={clientDomain(page.url)} className="block truncate pt-0.5 text-sm text-ink-muted">
-                    {clientDomain(page.url)}
-                  </span>
+                  <ClientIdentity clientId={page.clientId} />
                 </td>
                 <td className="px-3 py-[1.125rem] align-top"><KeywordSummary keywords={page.keywords} /></td>
                 <td className="px-3 py-[1.125rem] text-right align-top"><IssueCount count={page.issueCount} /></td>
@@ -114,7 +107,7 @@ export function PagesTable({ pages }: { pages: readonly PageListRow[] }) {
         </table>
       </div>
 
-      <ul className="border-t border-line-strong lg:hidden" aria-label="Sample tracked pages">
+      <ul className="border-t border-line-strong lg:hidden" aria-label="Tracked pages">
         {pages.map((page) => (
           <li
             key={page.id}
@@ -128,8 +121,8 @@ export function PagesTable({ pages }: { pages: readonly PageListRow[] }) {
               </div>
             </div>
             <div className="mt-4 grid min-w-0 grid-cols-[minmax(0,1fr)_auto] items-baseline gap-x-4 gap-y-1.5">
-              <p title={clientDomain(page.url)} className="min-w-0 truncate text-sm text-ink-muted">
-                {clientDomain(page.url)}
+              <p className="min-w-0 truncate text-sm text-ink-muted">
+                <ClientIdentity clientId={page.clientId} />
               </p>
               <p className="text-right"><IssueCount count={page.issueCount} showLabel /></p>
               <div className="col-span-2 min-w-0 text-sm"><KeywordSummary keywords={page.keywords} /></div>
