@@ -2,6 +2,7 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
+import { EyeMark } from '../brand/eye-mark';
 
 export function TopNavigation({
   userEmail,
@@ -19,15 +20,16 @@ export function TopNavigation({
   const settingsActive = pathname === '/settings';
   return (
     <header className="border-b border-line bg-surface">
-      <div className="mx-auto flex h-16 w-full max-w-[var(--layout-max-width)] items-stretch gap-4 px-[var(--layout-gutter)] max-[350px]:h-auto max-[350px]:flex-wrap max-[350px]:gap-y-0 sm:gap-10">
+      <div className="mx-auto grid w-full max-w-[var(--layout-max-width)] grid-cols-[minmax(0,1fr)_auto] grid-rows-[3.5rem_2.75rem] items-center px-[var(--layout-gutter)] sm:grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] sm:grid-rows-[4rem]">
         <Link
           href="/pages"
           aria-label="SERP, Pages"
-          className="inline-flex shrink-0 items-center rounded-control text-[1.3125rem] font-semibold tracking-[-0.075em] text-ink hover:text-accent-hover max-[350px]:h-16"
+          className="col-start-1 row-start-1 inline-flex w-fit items-center gap-1.5 rounded-control text-[1.3125rem] font-semibold tracking-[-0.075em] text-ink hover:text-accent-hover"
         >
-          SERP<span aria-hidden="true" className="text-accent">.</span>
+          <span>SERP<span aria-hidden="true" className="text-accent">.</span></span>
+          <EyeMark className="pointer-events-none h-6 w-[3.2rem] shrink-0" />
         </Link>
-        <nav aria-label="Main navigation" className="flex items-stretch max-[350px]:h-16">
+        <nav aria-label="Main navigation" className="col-span-2 row-start-2 flex h-full items-stretch justify-self-center sm:col-span-1 sm:col-start-2 sm:row-start-1">
           <Link
             href="/pages"
             aria-current={pagesActive ? 'page' : undefined}
@@ -43,8 +45,8 @@ export function TopNavigation({
             Settings
           </Link>
         </nav>
-        <div className="ml-auto flex min-w-0 items-center gap-1.5 max-[350px]:ml-0 max-[350px]:h-10 max-[350px]:w-full max-[350px]:justify-end max-[350px]:border-t max-[350px]:border-line sm:gap-4">
-          <span className="max-w-24 truncate text-xs text-ink-muted max-[350px]:max-w-44 sm:max-w-52 sm:text-sm" title={userEmail}>
+        <div className="col-start-2 row-start-1 flex min-w-0 items-center justify-self-end gap-1.5 sm:col-start-3 sm:gap-4">
+          <span className="max-w-24 truncate text-xs text-ink-muted max-[359px]:max-w-16 sm:max-w-52 sm:text-sm" title={userEmail}>
             {userEmail}
           </span>
           <button
