@@ -146,3 +146,27 @@ test('accepts empty history and rejects mismatched or malformed history', async 
   globalThis.fetch = async () => Response.json({ ...history, history: [{ ...history.history[0], position: 101 }] });
   assert.deepEqual(await loadRankHistory(apiRequest, pageId, { keywordId: pageKeywordId }), { kind: 'invalid-response' });
 });
+
+test('keeps backend local calendar dates and UTC snapshots distinct across a DST change', async () => {
+  const query = { keywordId: pageKeywordId, from: '2026-03-08', to: '2026-03-09' };
+  globalThis.fetch = async (request) => {
+    assert.equal(pathOf(request), rankHistoryPath(pageId, query));
+    return Response.json({
+      ...history,
+      timezone: 'America/Toronto',
+      from: query.from,
+      to: query.to,
+      history: [{
+        date: '2026-03-08',
+        snapshotDate: '2026-03-09',
+        snapshotAt: '2026-03-09T01:00:00.000Z',
+        position: 9,
+      }],
+    });
+  };
+  const result = await loadRankHistory(apiRequest, pageId, query);
+  assert.equal(result.kind, 'success');
+  assert.equal(result.data.history[0].date, '2026-03-08');
+  assert.equal(result.data.history[0].snapshotDate, '2026-03-09');
+  assert.equal(result.data.history[0].snapshotAt, '2026-03-09T01:00:00.000Z');
+});

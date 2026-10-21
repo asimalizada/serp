@@ -7,4 +7,4 @@ export function proxy(request: NextRequest) {
   return NextResponse.next();
 }
 
-export const config = { matcher: ['/pages/:path*', '/clients/new'] };
+export const config = { matcher: ['/pages/:path*', '/clients/new', '/settings'] };

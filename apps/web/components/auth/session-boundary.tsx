@@ -5,6 +5,7 @@ import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { apiRequest } from '../../lib/api-client';
 import { resolveSession, type SessionCheck } from '../../lib/session-response';
 import { AppShell } from '../shell/app-shell';
+import { WorkspaceUserContext } from './workspace-user-context';
 
 type RouteKind = 'login' | 'workspace';
 type SessionState = SessionCheck | { kind: 'checking' };
@@ -82,6 +83,12 @@ export function SessionBoundary({
     setAttempt((current) => current + 1);
   }
 
+  function updateUser(user: Extract<SessionCheck, { kind: 'authenticated' }>['user']) {
+    setSession((current) => current.kind === 'authenticated' && current.user.id === user.id
+      ? { kind: 'authenticated', user }
+      : current);
+  }
+
   async function signOut() {
     if (signOutInFlight.current) return;
     signOutInFlight.current = true;
@@ -123,14 +130,16 @@ export function SessionBoundary({
 
   if (route === 'workspace' && session.kind === 'authenticated') {
     return (
-      <AppShell
-        userEmail={session.user.email}
-        onSignOut={signOut}
-        isSigningOut={isSigningOut}
-        signOutError={signOutError}
-      >
-        {children}
-      </AppShell>
+      <WorkspaceUserContext.Provider value={{ user: session.user, updateUser }}>
+        <AppShell
+          userEmail={session.user.email}
+          onSignOut={signOut}
+          isSigningOut={isSigningOut}
+          signOutError={signOutError}
+        >
+          {children}
+        </AppShell>
+      </WorkspaceUserContext.Provider>
     );
   }
 
