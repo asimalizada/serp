@@ -7,6 +7,7 @@ import { apiRequest } from '../../lib/api-client';
 import {
   createClient,
   loadCrawlStatus,
+  validateClientName,
   validateClientWebsiteUrl,
   type CreatedClient,
   type CrawlStatusResult,
@@ -22,7 +23,9 @@ const crawlLabels: Record<number, string> = {
 export function AddClientForm() {
   const router = useRouter();
   const submitting = useRef(false);
+  const [name, setName] = useState('');
   const [websiteUrl, setWebsiteUrl] = useState('');
+  const [nameError, setNameError] = useState<string | null>(null);
   const [fieldError, setFieldError] = useState<string | null>(null);
   const [requestError, setRequestError] = useState<string | null>(null);
   const [outcomeUncertain, setOutcomeUncertain] = useState(false);
@@ -59,6 +62,11 @@ export function AddClientForm() {
     event.preventDefault();
     if (submitting.current || created || outcomeUncertain) return;
     setRequestError(null);
+    const validationNameError = validateClientName(name);
+    if (validationNameError) {
+      setNameError(validationNameError);
+      return;
+    }
     const validationError = validateClientWebsiteUrl(websiteUrl);
     if (validationError) {
       setFieldError(validationError);
@@ -68,7 +76,7 @@ export function AddClientForm() {
     submitting.current = true;
     setIsSubmitting(true);
     try {
-      const result = await createClient(apiRequest, websiteUrl);
+      const result = await createClient(apiRequest, websiteUrl, name);
       switch (result.kind) {
         case 'success':
           setCreated(result.data);
@@ -149,7 +157,21 @@ export function AddClientForm() {
         </section>
       ) : (
         <form onSubmit={submit} noValidate className="mt-10 max-w-[26rem] border-t border-line-strong pt-6">
-          <label htmlFor="client-website-url" className="block text-sm font-medium text-ink">Website URL</label>
+          <label htmlFor="client-name" className="block text-sm font-medium text-ink">Client name</label>
+          <input
+            id="client-name"
+            name="name"
+            type="text"
+            required
+            value={name}
+            onChange={(event) => { setName(event.target.value); setNameError(null); setRequestError(null); }}
+            aria-invalid={!!nameError}
+            aria-describedby={nameError ? 'client-name-error' : undefined}
+            disabled={isSubmitting || outcomeUncertain}
+            className="mt-2 h-11 w-full rounded-control border border-line-strong bg-surface px-3 text-sm text-ink placeholder:text-ink-faint hover:border-ink-faint focus:border-accent disabled:opacity-60"
+          />
+          {nameError && <p id="client-name-error" role="alert" className="mt-2 text-sm text-danger">{nameError}</p>}
+          <label htmlFor="client-website-url" className="mt-5 block text-sm font-medium text-ink">Website URL</label>
           <p id="client-url-help" className="mt-1 text-sm leading-6 text-ink-muted">Include http:// or https://. Use the website you want to crawl.</p>
           <input
             id="client-website-url"

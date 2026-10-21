@@ -52,15 +52,24 @@ export function validateClientWebsiteUrl(value: string): string | null {
   return null;
 }
 
+export function validateClientName(value: string): string | null {
+  if (!value.trim()) return 'Enter a client name.';
+  if (!createClientSchema.shape.name.safeParse(value).success) {
+    return 'Client name must be at most 255 characters.';
+  }
+  return null;
+}
+
 export async function createClient(
   request: (path: string, init: RequestInit) => Promise<ApiResult>,
   websiteUrl: string,
+  name: string,
 ): Promise<CreateClientResult> {
   try {
     const result = await request('/clients', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ websiteUrl }),
+      body: JSON.stringify({ name: name.trim(), websiteUrl }),
     });
     if (result.kind === 'auth-expired') return { kind: 'auth-expired' };
     if (result.kind === 'mutation-not-retried') return { kind: 'resubmit-required' };
