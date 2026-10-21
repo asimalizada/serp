@@ -7,7 +7,8 @@
     "build": "next build",
     "start": "next start",
     "typecheck": "tsc --noEmit",
-    "lint": "eslint ."
+    "lint": "eslint .",
+    "test:api-client": "node --experimental-strip-types --test test/api-client.test.mjs"
   },
   "dependencies": {
     "@serp/shared": "workspace:*",
