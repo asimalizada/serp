@@ -149,6 +149,65 @@ test('retries a rolled-back page transaction after a write conflict (P2034)', as
   assert.equal(saved, 1);
 });
 
+test('saveFailedPage retries one P2034 and creates one failed crawl', async () => {
+  let attempts = 0;
+  const saved = [];
+  const tx = {
+    page: { upsert: async () => ({ id: 'page-1' }) },
+    pageCrawl: { create: async ({ data }) => { saved.push(data); } },
+  };
+  const store = new PrismaCrawlStore({
+    $transaction: async (callback) => {
+      attempts++;
+      if (attempts === 1) throw Object.assign(new Error('write conflict'), { code: 'P2034' });
+      return callback(tx);
+    },
+  });
+
+  await store.saveFailedPage('client-1', 'run-1', 'https://example.com/blog/article', 1, 'HTTP 503', 503);
+
+  assert.equal(attempts, 2);
+  assert.equal(saved.length, 1);
+  assert.equal(saved[0].status, 3);
+  assert.equal(saved[0].pageId, 'page-1');
+  assert.equal(saved[0].httpStatusCode, 503);
+  assert.equal(saved[0].error, 'HTTP 503');
+});
+
+test('saveFailedPage stops after three P2034 attempts', async () => {
+  let attempts = 0;
+  const conflict = Object.assign(new Error('write conflict'), { code: 'P2034' });
+  const store = new PrismaCrawlStore({
+    $transaction: async () => {
+      attempts++;
+      throw conflict;
+    },
+  });
+
+  await assert.rejects(
+    store.saveFailedPage('client-1', 'run-1', 'https://example.com/blog/article', 1, 'HTTP 503'),
+    (error) => error === conflict,
+  );
+  assert.equal(attempts, 3);
+});
+
+test('saveFailedPage does not retry non-P2034 transaction errors', async () => {
+  let attempts = 0;
+  const failure = Object.assign(new Error('unique constraint'), { code: 'P2002' });
+  const store = new PrismaCrawlStore({
+    $transaction: async () => {
+      attempts++;
+      throw failure;
+    },
+  });
+
+  await assert.rejects(
+    store.saveFailedPage('client-1', 'run-1', 'https://example.com/blog/article', 1, 'HTTP 503'),
+    (error) => error === failure,
+  );
+  assert.equal(attempts, 1);
+});
+
 test('a pending crawl run is claimed exactly once', async () => {
   let status = 0;
   const store = new PrismaCrawlStore({

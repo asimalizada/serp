@@ -207,27 +207,37 @@ export class PrismaCrawlStore implements CrawlStore {
     error: string,
     httpStatusCode?: number,
   ): Promise<void> {
-    await this.prisma.$transaction(
-      async (tx) => {
-        const page = await tx.page.upsert({
-          where: { clientId_url: { clientId, url } },
-          create: { clientId, url },
-          update: {},
-        });
-        await tx.pageCrawl.create({
-          data: {
-            crawlRunId: runId,
-            pageId: page.id,
-            clientId,
-            sitemapOrder: order,
-            status: 3,
-            httpStatusCode,
-            error: error.slice(0, 2000),
-            processedAt: new Date(),
+    for (let attempt = 0; attempt < 3; attempt++) {
+      try {
+        await this.prisma.$transaction(
+          async (tx) => {
+            const page = await tx.page.upsert({
+              where: { clientId_url: { clientId, url } },
+              create: { clientId, url },
+              update: {},
+            });
+            await tx.pageCrawl.create({
+              data: {
+                crawlRunId: runId,
+                pageId: page.id,
+                clientId,
+                sitemapOrder: order,
+                status: 3,
+                httpStatusCode,
+                error: error.slice(0, 2000),
+                processedAt: new Date(),
+              },
+            });
           },
-        });
-      },
-      { maxWait: 10_000, timeout: 20_000 },
-    );
+          { maxWait: 10_000, timeout: 20_000 },
+        );
+        return;
+      } catch (transactionError) {
+        if (!(transactionError instanceof Error && 'code' in transactionError && transactionError.code === 'P2034') || attempt === 2) {
+          throw transactionError;
+        }
+        await new Promise((resolve) => setTimeout(resolve, 100 * (attempt + 1)));
+      }
+    }
   }
 }

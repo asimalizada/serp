@@ -489,12 +489,28 @@ test('AuthGuard validates JWT signature and claims without querying database', a
     { status: 401 },
   );
 
-  // 6. Supports Authorization Bearer header
-  const bearerReq = { headers: { authorization: `Bearer ${validToken}` } };
+  // 6. Cookie remains authoritative when an Authorization header is present
+  const cookieReq = { headers: { cookie: `serp_access=${validToken}`, authorization: 'Bearer invalid' } };
   assert.equal(
-    await guard.canActivate({ switchToHttp: () => ({ getRequest: () => bearerReq }) }),
+    await guard.canActivate({ switchToHttp: () => ({ getRequest: () => cookieReq }) }),
     true,
   );
+});
+
+test('AuthGuard rejects a valid Bearer JWT without an access cookie', async () => {
+  const jwtService = new JwtService();
+  const guard = new AuthGuard(jwtService, createMockConfig());
+  const validToken = await jwtService.signAsync(
+    { sub: 'usr-1', email: 'guard@example.com', timezone: 'UTC' },
+    { secret: TEST_JWT_SECRET, issuer: TEST_JWT_ISSUER, audience: TEST_JWT_AUDIENCE, expiresIn: '15m' },
+  );
+  const request = { headers: { authorization: `Bearer ${validToken}` } };
+
+  await assert.rejects(
+    guard.canActivate({ switchToHttp: () => ({ getRequest: () => request }) }),
+    { status: 401 },
+  );
+  assert.equal(request.user, undefined);
 });
 
 test('cookie token helpers extract access and refresh tokens properly', () => {
@@ -505,6 +521,7 @@ test('cookie token helpers extract access and refresh tokens properly', () => {
   };
   assert.equal(accessToken(req), 'access123');
   assert.equal(refreshToken(req), 'refresh456');
+  assert.equal(accessToken({ headers: { authorization: 'Bearer access123' } }), undefined);
 });
 
 // -------------------------------------------------------------
@@ -611,6 +628,10 @@ test('AuthController HTTP pipeline: login, access me, refresh rotation, replay r
     // 3. GET /auth/me without cookie fails with 401
     const unauthRes = await fetch(`${baseUrl}/auth/me`);
     assert.equal(unauthRes.status, 401);
+    const bearerOnlyRes = await fetch(`${baseUrl}/auth/me`, {
+      headers: { authorization: `Bearer ${cookies.serp_access}` },
+    });
+    assert.equal(bearerOnlyRes.status, 401);
 
     // 4. POST /auth/refresh with serp_refresh cookie rotates tokens
     const oldRefreshToken = cookies.serp_refresh;

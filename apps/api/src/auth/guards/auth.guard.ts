@@ -14,16 +14,9 @@ export type AuthRequest = Request & { user: AuthUser };
 
 export function accessToken(request: Request): string | undefined {
   const cookies = request.headers.cookie?.split(';').map((part) => part.trim());
-  const accessCookie = cookies
+  return cookies
     ?.find((part) => part.startsWith('serp_access='))
     ?.slice('serp_access='.length);
-  if (accessCookie) return accessCookie;
-
-  const authHeader = request.headers.authorization;
-  if (authHeader?.startsWith('Bearer ')) {
-    return authHeader.slice('Bearer '.length);
-  }
-  return undefined;
 }
 
 export function refreshToken(request: Request): string | undefined {
