@@ -1,28 +1,33 @@
 'use client';
 
 import { loginSchema } from '@serp/shared';
+import { useRouter } from 'next/navigation';
 import { useRef, useState, type FormEvent } from 'react';
 
 type Field = 'email' | 'password';
 type FieldErrors = Partial<Record<Field, string>>;
 
 export function SignInForm() {
+  const router = useRouter();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [passwordVisible, setPasswordVisible] = useState(false);
   const [errors, setErrors] = useState<FieldErrors>({});
-  const [showPendingMessage, setShowPendingMessage] = useState(false);
+  const [formError, setFormError] = useState<string | null>(null);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const submissionInProgress = useRef(false);
   const emailRef = useRef<HTMLInputElement>(null);
   const passwordRef = useRef<HTMLInputElement>(null);
 
   function clearFieldError(field: Field) {
     setErrors((current) => ({ ...current, [field]: undefined }));
-    setShowPendingMessage(false);
+    setFormError(null);
   }
 
-  function handleSubmit(event: FormEvent<HTMLFormElement>) {
+  async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    setShowPendingMessage(false);
+    if (submissionInProgress.current) return;
+    setFormError(null);
 
     const result = loginSchema.safeParse({ email, password });
     if (!result.success) {
@@ -40,7 +45,48 @@ export function SignInForm() {
     }
 
     setErrors({});
-    setShowPendingMessage(true);
+    const apiOrigin = process.env.NEXT_PUBLIC_API_ORIGIN
+      ?? (process.env.NODE_ENV === 'development' ? 'http://localhost:3001' : undefined);
+    if (!apiOrigin) {
+      setFormError('Sign in is temporarily unavailable. Please try again later.');
+      return;
+    }
+
+    submissionInProgress.current = true;
+    setIsSubmitting(true);
+    let signedIn = false;
+
+    try {
+      const response = await fetch(new URL('/auth/login', apiOrigin), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify(result.data),
+      });
+
+      if (response.ok) {
+        signedIn = true;
+        router.replace('/pages');
+        return;
+      }
+
+      if (response.status === 401) {
+        setFormError('Email or password is incorrect.');
+      } else if (response.status === 429) {
+        setFormError('Too many sign-in attempts. Please wait a few minutes and try again.');
+      } else if (response.status === 400) {
+        setFormError('Please check your email and password and try again.');
+      } else {
+        setFormError('Sign in could not be completed. Please try again.');
+      }
+    } catch {
+      setFormError('Unable to reach the server. Check your connection and try again.');
+    } finally {
+      if (!signedIn) {
+        submissionInProgress.current = false;
+        setIsSubmitting(false);
+      }
+    }
   }
 
   const inputClassName =
@@ -117,14 +163,15 @@ export function SignInForm() {
 
       <button
         type="submit"
-        className="mt-2 flex h-12 w-full items-center justify-center rounded-control bg-accent px-4 text-[0.9375rem] font-medium text-white transition-[background-color,transform] duration-[var(--motion-standard)] hover:bg-accent-hover active:translate-y-px"
+        disabled={isSubmitting}
+        className="mt-2 flex h-12 w-full items-center justify-center rounded-control bg-accent px-4 text-[0.9375rem] font-medium text-white transition-[background-color,transform] duration-[var(--motion-standard)] hover:bg-accent-hover active:translate-y-px disabled:cursor-wait disabled:opacity-70"
       >
-        Sign in
+        {isSubmitting ? 'Signing in…' : 'Sign in'}
       </button>
 
-      {showPendingMessage && (
-        <p role="status" className="rounded-control border border-line bg-surface-subtle px-3.5 py-3 text-sm leading-5 text-ink-muted">
-          Authentication integration is pending. This preview does not sign you in.
+      {formError && (
+        <p role="alert" className="text-sm leading-5 text-danger">
+          {formError}
         </p>
       )}
     </form>
