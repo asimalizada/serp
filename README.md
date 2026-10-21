@@ -1,76 +1,106 @@
 # SERP
 
-Minimal pnpm workspace for an SEO keyword tracking platform. Requires Node.js 22.12+, pnpm 10, and Docker Compose for local PostgreSQL.
+SERP is an SEO workspace for client websites. It discovers blog articles through sitemaps, records page analysis and SEO issues across crawls, and displays keyword rank history. Demo rank positions are **synthetic**, not Google Search results. Each user's clients and data are isolated by the API.
+
+## Stack and structure
+
+- `apps/api`: NestJS 11 REST API, crawler, background worker, seed command, and Prisma 7 migrations.
+- `apps/web`: Next.js 16 App Router, React 19, Tailwind CSS 4, and IBM Plex fonts.
+- `packages/shared`: Zod input and query schemas shared by API and frontend.
+- PostgreSQL 17 via Docker Compose; TypeScript and pnpm 10 throughout.
+
+The backend separates auth, clients, pages, users, crawler, database, and seed responsibilities. The frontend uses a small browser API client and shared schemas.
+
+## Features
+
+- Email/password sign in, JWT access and rotating refresh cookies, logout, and PostgreSQL-backed login throttling.
+- Client creation with asynchronous crawling and crawl status.
+- Tenant-scoped Pages search, client filtering, and server-side pagination.
+- Historical page crawls, keyword relevance, six SEO issue types, and rank history with date filters.
+- IANA timezone preference for local rank-history dates; snapshots remain stored in UTC.
 
 ## Local setup
 
-1. Copy `.env.example` to `.env`, choose a password, and update `DATABASE_URL` to match. If the password has URL-special characters, URL-encode it in `DATABASE_URL`.
-2. Run `pnpm install`.
-3. Run `docker compose up -d` to start PostgreSQL.
-4. Run `pnpm db:migrate:deploy` and `pnpm db:generate`.
-5. Run `pnpm dev` to start the API on port 3001 and the web app on port 3000.
+Prerequisites: Node.js **22.12+**, **pnpm 10.33.2**, Docker Compose, and network access for demo crawls. From the repository root:
 
-The API root route returns a starter response. API startup validates `DATABASE_URL`, `API_PORT`, `WEB_ORIGIN`, `API_ORIGIN`, `NODE_ENV`, and `TRUST_PROXY_HOPS`.
+```sh
+pnpm install --frozen-lockfile
+cp .env.example .env
+cp apps/web/.env.example apps/web/.env.local
+```
 
-## Commands
+Edit the ignored root `.env`. Set a unique `JWT_SECRET` of at least 32 characters and distinct development-only `SEED_USER_A_PASSWORD` and `SEED_USER_B_PASSWORD` values of 12–72 UTF-8 bytes. Change the example PostgreSQL password and update `DATABASE_URL` to match; URL-encode special characters in the URL password. If port 5432 is occupied, set `POSTGRES_PORT` and the same port in `DATABASE_URL`. The web app's `NEXT_PUBLIC_API_ORIGIN` must match `API_ORIGIN`; `WEB_ORIGIN` must match the browser origin. The examples use ports 3001 and 3000.
 
-| Command | Purpose |
-| --- | --- |
-| `pnpm dev` | Start both apps in watch mode |
-| `pnpm dev:api` / `pnpm dev:web` | Start one app |
-| `pnpm build` | Build shared, API, and web packages |
-| `pnpm start:api` / `pnpm start:web` | Run production builds |
-| `pnpm db:validate` | Validate the Prisma schema |
-| `pnpm db:generate` | Generate Prisma Client from the schema |
-| `pnpm db:migrate:dev` | Create and apply migrations in development |
-| `pnpm db:migrate:deploy` | Apply committed migrations in deployment |
-| `pnpm crawl --client <uuid>` | Build the API and crawl an existing client |
-| `pnpm seed` | Provision two demo clients, recover incomplete crawls, and generate daily synthetic ranks |
-| `pnpm --filter @serp/api test` | Build and run backend tests |
+```sh
+pnpm --filter @serp/shared build
+docker compose up -d
+pnpm db:migrate:deploy
+pnpm db:generate
+pnpm seed
+pnpm dev
+```
 
-`apps/api` loads the root `.env` for Prisma commands and API startup. If port 5432 is occupied, set `POSTGRES_PORT` in `.env` and use the same port in `DATABASE_URL`.
+Open `http://localhost:3000/login`. The API listens at `http://localhost:3001`. Seeding fetches public websites and may take time. Inspect its crawl summaries if a site is unavailable. Rerunning it recovers missing successful demo pages and rank dates without deleting historical records.
 
-## REST API
+Use `pnpm dev:api` or `pnpm dev:web` to run one app. For production builds, run `pnpm build`, then `pnpm start:api` and `pnpm start:web` in separate terminals with PostgreSQL and the configured environment available.
 
-Set `WEB_ORIGIN` and `API_ORIGIN` for the allowed browser origins (defaults: `http://localhost:3000` and `http://localhost:3001`). Browser requests must use credentials. Login sets an opaque, HTTP-only, SameSite=Lax cookie, with `Secure` enabled in production. The session is stored in PostgreSQL for eight hours; logout deletes the session, including across API restarts. Deploy the frontend and API on the same site for SameSite=Lax cookie delivery. Mutating browser requests require an allowed `Origin` header. The API trusts no proxy headers by default; set `TRUST_PROXY_HOPS` to the exact number of trusted reverse proxies when deployed behind one. This controls the IP used for throttling.
+### Demo accounts
 
-Only `POST /auth/login` is throttled. Nest's `@nestjs/throttler` uses PostgreSQL storage, with limits of 20 requests per IP and 5 requests per normalized email over 15 minutes. These are **request counts**, whereas the previous in-memory limiter counted **failed logins** and cleared the account count after success. Successful logins now consume the same budget, and the limit persists across restarts and API instances. Expired sessions and throttle rows are removed at API startup and hourly. The account limit can temporarily lock out a targeted account; the IP limit reduces casual abuse, but no CAPTCHA or external abuse service is included.
-
-| Endpoint | Request | Response |
+| Email | Password environment variable | Website |
 | --- | --- | --- |
-| `POST /auth/login` | `{ email, password }` | `{ user: { id, email, timezone } }` and session cookie |
-| `POST /auth/logout` | Session cookie | `{ success: true }` and cleared cookie |
-| `GET /auth/me` | Session cookie | `{ user: { id, email, timezone } }` |
-| `GET /clients` | Session cookie | `{ clients: [{ id, name, websiteUrl, normalizedDomain, createdAt, pageCount, latestCrawl }] }` |
-| `POST /clients` | `{ websiteUrl, name? }` | HTTP 202, `{ client, crawlRun: { id, status: 0 } }` |
-| `GET /clients/:id/crawl-status` | Session cookie | `{ clientId, crawlRun }`; counts and status on the latest run |
-| `GET /pages` | `clientId?`, `url?`, `keyword?`, `search?`, `page?`, `pageSize?` | `{ items, pagination }`; at most 100 pages per response |
-| `GET /pages/:id` | Session cookie | Current successful analysis, issues, keywords and latest ranks |
-| `GET /pages/:id/rank-history` | `keywordId?`, `from?`, `to?` | `{ pageId, pageKeywordId, keyword, timezone, from, to, history, latestPosition }` |
-| `PATCH /users/me/timezone` | `{ timezone }` | `{ user: { id, email, timezone } }` |
+| `semrush.demo@serp.local` | `SEED_USER_A_PASSWORD` | `https://www.semrush.com` |
+| `yoast.demo@serp.local` | `SEED_USER_B_PASSWORD` | `https://yoast.com` |
 
-`keywordId` on rank history is the page-keyword relationship ID returned as `pageKeywordId` in page keywords. Without it, the endpoint uses the current primary keyword: the highest relevance score in the latest successful PageCrawl, with phrase as the tie breaker. `latestRank` is null when no snapshot exists. Rank-history dates are interpreted in the user's IANA timezone, while stored `snapshotAt` remains UTC. The default range is the last 30 local calendar days; the maximum is 366 days. Every resource query checks the authenticated owner's user ID. Inaccessible client, page, and keyword IDs return 404.
+Use the passwords supplied in your ignored `.env`. The seed stores bcrypt hashes and never replaces an existing demo user's password. There is no public registration endpoint.
 
-Adding a client validates its public destination and creates a pending CrawlRun before returning. The in-process worker handles the crawl and never generates rank snapshots. Pending runs resume on restart. A Running run is left untouched because status alone cannot prove that its worker stopped; an operator must inspect and recover a genuinely abandoned run. Only one API worker should process the queue until a shared claim/lease strategy is added. Error responses use `{ statusCode, error, message }`.
+## Checks and commands
 
-## Demo seed
+```sh
+pnpm db:validate
+pnpm --filter @serp/shared build
+pnpm --filter @serp/api test
+pnpm --filter @serp/web typecheck
+pnpm --filter @serp/web lint
+pnpm --filter @serp/web test
+pnpm build
+```
 
-Set `SEED_USER_A_PASSWORD` and `SEED_USER_B_PASSWORD` in your ignored `.env` to distinct development-only passwords of 12 to 72 UTF-8 bytes, then run `pnpm seed`. The demo login emails are `semrush.demo@serp.local` and `yoast.demo@serp.local`; use the passwords you supplied. The seed stores bcrypt hashes and does not change an existing demo user's password.
+The API test command builds the API. Its database integration tests create and remove a **separate, uniquely named test database**; the configured PostgreSQL user needs database creation permission. An optional live HTTP test is skipped unless `SERP_TEST_API_ORIGIN` and both demo password variables are set. That optional test creates an `example.org` client and briefly updates a demo timezone, so use a disposable seeded database for it.
 
-The seed creates or reuses one client per demo user (`https://www.semrush.com` and `https://yoast.com`) and crawls the first 15 qualifying blog posts in sitemap order. A complete prior crawl is skipped. If a crawl is partial, only URLs without a prior successful PageCrawl are retried in a new CrawlRun; old results remain untouched. Failed fetches are recorded, and a failed crawl may be retried by running the seed again.
+Other scripts: `pnpm db:migrate:dev` creates development migrations; `pnpm db:migrate:deploy` applies committed migrations; `pnpm db:generate` regenerates Prisma Client; `pnpm crawl --client <uuid>` crawls an existing client. Crawling does **not** generate rank snapshots.
 
-Rank generation is a separate operation within the seed. It covers every existing PageKeyword, including relationships added through later crawls, and creates at least 50,000 synthetic daily observations overall. The date range expands when there are fewer relationships, with a minimum of 365 days. Positions are deterministic and change gradually. Existing snapshots are left intact, and only missing dates are inserted in batches. `pnpm crawl` never generates rank snapshots.
+## API overview
 
-## Database schema
+Browser requests use `credentials: 'include'`; mutating browser requests require an allowed `Origin` header. All client, page, crawl, keyword, and rank queries enforce ownership. Inaccessible IDs return 404. Error responses use `{ statusCode, error, message }`.
 
-The initial Prisma migration creates the 11 application tables. The additive authentication migration creates `AuthSessions` and `AuthThrottles`; it does not alter the historical data model. `PageCrawls.clientId` and `PageCrawlKeywords.pageId` let PostgreSQL enforce that a crawl uses a page from its client and that historical relevance refers to a persistent page-keyword identity. Historical foreign keys restrict deletion and key updates, preserving history across recrawls.
+| Endpoint | Purpose |
+| --- | --- |
+| `POST /auth/login` | Validate credentials, set access and refresh cookies, return user. |
+| `POST /auth/refresh` | Rotate refresh token and replace both cookies. |
+| `POST /auth/logout` | Revoke refresh token and clear cookies. |
+| `GET /auth/me` | Return `{ user: { id, email, timezone } }`. |
+| `GET /clients` | List owned clients and crawl summaries. |
+| `POST /clients` | Validate website and return HTTP 202 with client and pending crawl run. |
+| `GET /clients/:id/crawl-status` | Return latest crawl status and counts. |
+| `GET /pages` | Paginated pages; `clientId`, `url`, `keyword`, `search`, `page`, `pageSize` (default 20, max 100). |
+| `GET /pages/:id` | Latest successful page analysis, keywords, ranks, and issues. |
+| `GET /pages/:id/rank-history` | History using `keywordId?` (page-keyword ID), `from?`, `to?` in `YYYY-MM-DD` form. |
+| `PATCH /users/me/timezone` | Save an IANA timezone and refresh the access cookie. |
 
-Crawl and page-crawl statuses use `0 = pending`, `1 = running/processing`, `2 = completed`, and `3 = failed`. Issue severity uses `1 = Info`, `2 = Warning`, and `3 = Critical`. The migrations enforce these values, relevance and ranking bounds, and the UTC date of each rank snapshot. `snapshotAt` must be supplied explicitly. Completed or failed crawl runs and page crawls and their historical details, plus rank snapshots, cannot be edited or deleted. Write page-crawl keywords and issues before marking a page crawl completed or failed. Normalize incoming emails with `normalizeEmail` before user creation or lookup; PostgreSQL also normalizes stored emails and enforces case-insensitive uniqueness.
+Without `keywordId`, rank history uses the primary keyword from the latest successful crawl. The default range is 30 local calendar days, with a maximum inclusive span of 366 days. Missing ranks are `null`.
 
-## Website crawler
+## Data and lifecycle
 
-`pnpm crawl --client <uuid>` runs the crawler for a Client already in PostgreSQL. It reads the client's `websiteUrl`, discovers robots.txt and conventional sitemaps, traverses nested XML and gzip sitemaps in listed order, and selects up to 15 likely blog articles. The URL rules use general blog, article, news, guide, dated-path, and blog-subdomain patterns; they do not contain site-specific paths.
+The 11 SEO tables are `Users`, `Clients`, `CrawlRuns`, `Pages`, `PageCrawls`, `Keywords`, `PageKeywords`, `PageCrawlKeywords`, `SeoIssueTypes`, `SeoIssues`, and `RankSnapshots`. Two authentication tables, `RefreshTokens` and `AuthThrottles`, support rotation and shared login limits. Prisma migrations include PostgreSQL constraints and triggers for cross-client relationships, status values, UTC snapshot dates, and historical immutability. Recrawls create new runs and page analyses; prior records and rank snapshots remain intact.
 
-The crawler uses three concurrent page requests, a 12-second total request timeout, a 2 MB response limit, a 5-redirect limit, and public-IP checks for each destination. It extracts article text without navigation and computes a SHA-256 hash of normalized analyzed content. Keyword phrases use title, H1, headings, meta-description, and body-frequency signals; scores are rounded to four decimal places. Six initial SEO issue definitions are inserted into `SeoIssueTypes` on the first crawl.
+The API worker polls pending runs and processes pages with bounded concurrency. It resumes **pending** runs after restart. A run already marked running is left for operator review because ownership cannot be inferred after a crash. Run one API worker for the queue until distributed claiming or leasing is added.
 
-Each crawl gets a new `CrawlRun`. Each selected URL gets a new `PageCrawl`; successful page details, keywords, and issues are saved in one database transaction before that page crawl becomes terminal. A failed page gets its own failed snapshot while other pages continue. Existing Pages, PageKeywords, previous PageCrawls, and RankSnapshots are retained. A run becomes terminal only after all selected pages have been recorded.
+Access JWTs last 15 minutes. Opaque refresh tokens last seven days and are stored hashed in PostgreSQL; rotation is atomic. Both cookies are HttpOnly, SameSite=Lax, and Secure in production. Logout revokes the refresh token. PostgreSQL-backed `@nestjs/throttler` limits login to 20 requests per IP and five per normalized email per 15 minutes. Limits count requests, including successful ones. For deployment, use compatible same-site HTTPS origins, set `WEB_ORIGIN` and `API_ORIGIN` exactly, and set `TRUST_PROXY_HOPS` to the number of trusted reverse proxies (default 0).
+
+## Trade-offs and limitations
+
+- Seeded rank history is deterministic simulated daily movement, generated in batches for every PageKeyword. It targets at least 50,000 rows and at least 365 days, extending the range when needed. It does not query Google or estimate real search performance. Existing snapshots are never overwritten; new page-keyword relationships receive snapshots only when the seed runs again.
+- Blog discovery uses robots.txt, conventional sitemap locations, nested XML/gzip sitemaps, and general article URL heuristics. It selects at most 15 qualifying URLs in sitemap order. Inaccessible or malformed sitemaps, blocked fetches, or unusual URL structures may yield fewer pages. Individual page failures are recorded without discarding successful pages.
+- Fetches use public-IP checks for initial and redirect destinations, timeouts, redirect and response-size limits, and three concurrent page requests. The crawler stores extracted metadata and a SHA-256 content hash, not raw HTML.
+- The in-process crawl queue has no cross-instance lease or automatic recovery of abandoned **running** jobs. Production use needs an operator recovery procedure and shared worker coordination.
+- Browser auth requires compatible cookie, CORS, Origin, and HTTPS configuration. The optional live HTTP integration test and live external-site crawls depend on credentials, services, and third-party availability; routine tests do not exercise those paths automatically.
