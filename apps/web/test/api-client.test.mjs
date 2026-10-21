@@ -182,3 +182,15 @@ test('returns other HTTP responses unchanged without refreshing', async () => {
   assert.equal(result.response.status, 503);
   assert.equal(calls, 1);
 });
+
+test('does not treat a refresh server failure as an expired session', async () => {
+  const calls = [];
+  globalThis.fetch = async (input) => {
+    const path = pathOf(input);
+    calls.push(path);
+    return new Response(null, { status: path === '/auth/refresh' ? 503 : 401 });
+  };
+
+  assert.deepEqual(await apiRequest('/auth/me'), { kind: 'server-error' });
+  assert.deepEqual(calls, ['/auth/me', '/auth/refresh']);
+});

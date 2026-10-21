@@ -1,6 +1,6 @@
 import type { ReactNode } from 'react';
-import { AppShell } from '../../components/shell/app-shell';
+import { SessionBoundary } from '../../components/auth/session-boundary';
 
 export default function WorkspaceLayout({ children }: Readonly<{ children: ReactNode }>) {
-  return <AppShell>{children}</AppShell>;
+  return <SessionBoundary route="workspace">{children}</SessionBoundary>;
 }

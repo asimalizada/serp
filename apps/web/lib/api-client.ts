@@ -4,9 +4,10 @@ export type ApiResult =
   | { kind: 'response'; response: Response }
   | { kind: 'auth-expired' }
   | { kind: 'network-error' }
+  | { kind: 'server-error' }
   | { kind: 'mutation-not-retried'; response: Response };
 
-type RefreshResult = 'refreshed' | 'auth-expired' | 'network-error';
+type RefreshResult = 'refreshed' | 'auth-expired' | 'network-error' | 'server-error';
 
 // This module is browser-only. A pending rotation is shared by requests in one tab.
 let refreshInFlight: Promise<RefreshResult> | null = null;
@@ -29,7 +30,8 @@ async function refreshSession(origin: string): Promise<RefreshResult> {
       method: 'POST',
       credentials: 'include',
     });
-    if (!response.ok) return 'auth-expired';
+    if (response.status === 401 || response.status === 403) return 'auth-expired';
+    if (!response.ok) return 'server-error';
     refreshGeneration += 1;
     return 'refreshed';
   } catch {

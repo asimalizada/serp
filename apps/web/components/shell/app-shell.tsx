@@ -1,7 +1,19 @@
 import type { ReactNode } from 'react';
 import { TopNavigation } from './top-navigation';
 
-export function AppShell({ children }: { children: ReactNode }) {
+export function AppShell({
+  children,
+  userEmail,
+  onSignOut,
+  isSigningOut,
+  signOutError,
+}: {
+  children: ReactNode;
+  userEmail: string;
+  onSignOut: () => void;
+  isSigningOut: boolean;
+  signOutError: string | null;
+}) {
   return (
     <div className="min-h-dvh">
       <a
@@ -10,7 +22,12 @@ export function AppShell({ children }: { children: ReactNode }) {
       >
         Skip to content
       </a>
-      <TopNavigation />
+      <TopNavigation
+        userEmail={userEmail}
+        onSignOut={onSignOut}
+        isSigningOut={isSigningOut}
+        signOutError={signOutError}
+      />
       <main id="main-content" className="mx-auto w-full max-w-[var(--layout-max-width)] px-[var(--layout-gutter)] pb-20 pt-9 sm:pt-11">
         {children}
       </main>
