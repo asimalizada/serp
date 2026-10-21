@@ -1,3 +1,4 @@
+import Link from 'next/link';
 import type { ClientSummary, PageListRow } from '../../lib/pages-data';
 
 function ClientIdentity({ client }: { client: ClientSummary | undefined }) {
@@ -25,7 +26,7 @@ function PageIdentity({ page }: { page: PageListRow }) {
     <div className="min-w-0">
       <p
         title={title ?? undefined}
-        className="line-clamp-2 text-[0.9375rem] font-medium leading-[1.5] tracking-[-0.01em] text-ink"
+        className="line-clamp-2 text-[0.9375rem] font-medium leading-[1.5] tracking-[-0.01em] text-ink transition-colors group-hover:text-accent-hover"
       >
         {title || <span className="font-medium text-ink-muted">{fallback}</span>}
       </p>
@@ -107,9 +108,13 @@ export function PagesTable({
             {pages.map((page) => (
               <tr
                 key={page.id}
-                className="border-b border-line transition-colors duration-[var(--motion-fast)] hover:bg-surface-subtle"
+                className="border-b border-line transition-colors duration-[var(--motion-fast)] hover:bg-surface-subtle focus-within:bg-surface-subtle"
               >
-                <td className="py-[1.125rem] pr-6 align-top"><PageIdentity page={page} /></td>
+                <td className="py-[1.125rem] pr-6 align-top">
+                  <Link href={`/pages/${page.id}`} aria-label={`View details for ${page.current?.title || page.url}`} className="group block rounded-control">
+                    <PageIdentity page={page} />
+                  </Link>
+                </td>
                 <td className="px-3 py-[1.125rem] align-top">
                   <ClientIdentity client={clientsById.get(page.clientId)} />
                 </td>
@@ -126,22 +131,24 @@ export function PagesTable({
         {pages.map((page) => (
           <li
             key={page.id}
-            className="border-b border-line py-[1.125rem] transition-colors duration-[var(--motion-fast)] hover:bg-surface-subtle"
+            className="border-b border-line transition-colors duration-[var(--motion-fast)] hover:bg-surface-subtle focus-within:bg-surface-subtle"
           >
-            <div className="flex min-w-0 items-start gap-5">
-              <div className="min-w-0 flex-1"><PageIdentity page={page} /></div>
-              <div className="min-w-10 shrink-0 text-right">
-                <p className="text-[0.6875rem] font-medium uppercase tracking-[0.08em] text-ink-faint">Rank</p>
-                <p className="mt-0.5"><RankValue rank={page.latestRank} /></p>
+            <Link href={`/pages/${page.id}`} aria-label={`View details for ${page.current?.title || page.url}`} className="group block rounded-control py-[1.125rem]">
+              <div className="flex min-w-0 items-start gap-5">
+                <div className="min-w-0 flex-1"><PageIdentity page={page} /></div>
+                <div className="min-w-10 shrink-0 text-right">
+                  <p className="text-[0.6875rem] font-medium uppercase tracking-[0.08em] text-ink-faint">Rank</p>
+                  <p className="mt-0.5"><RankValue rank={page.latestRank} /></p>
+                </div>
               </div>
-            </div>
-            <div className="mt-4 grid min-w-0 grid-cols-[minmax(0,1fr)_auto] items-baseline gap-x-4 gap-y-1.5">
-              <p className="min-w-0 truncate text-sm text-ink-muted">
-                <ClientIdentity client={clientsById.get(page.clientId)} />
-              </p>
-              <p className="text-right"><IssueCount count={page.issueCount} showLabel /></p>
-              <div className="col-span-2 min-w-0 text-sm"><KeywordSummary keywords={page.keywords} /></div>
-            </div>
+              <div className="mt-4 grid min-w-0 grid-cols-[minmax(0,1fr)_auto] items-baseline gap-x-4 gap-y-1.5">
+                <p className="min-w-0 truncate text-sm text-ink-muted">
+                  <ClientIdentity client={clientsById.get(page.clientId)} />
+                </p>
+                <p className="text-right"><IssueCount count={page.issueCount} showLabel /></p>
+                <div className="col-span-2 min-w-0 text-sm"><KeywordSummary keywords={page.keywords} /></div>
+              </div>
+            </Link>
           </li>
         ))}
       </ul>
